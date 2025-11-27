@@ -1,0 +1,977 @@
+// SOPHIA — Your Intelligent Market Mind
+// Database Schema (DBML)
+// Version: 1.0
+
+Project sophia {
+  database_type: 'PostgreSQL'
+  Note: '''
+    # SOPHIA Database Schema
+    Unified investment intelligence platform that aggregates portfolios 
+    across stock brokerages and cryptocurrency exchanges with AI-powered insights.
+  '''
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+Enum provider_type {
+  brokerage
+  exchange
+  wallet
+}
+
+Enum sync_status {
+  pending
+  syncing
+  success
+  error
+}
+
+Enum asset_type {
+  stock
+  etf
+  crypto
+  token
+}
+
+Enum message_role {
+  user
+  assistant
+  system
+}
+
+Enum alert_type {
+  price_above
+  price_below
+  percent_change_up
+  percent_change_down
+  volume_spike
+}
+
+Enum alert_condition {
+  gt
+  lt
+  gte
+  lte
+  eq
+}
+
+Enum market_state {
+  pre
+  regular
+  post
+  closed
+}
+
+Enum sentiment {
+  positive
+  negative
+  neutral
+}
+
+Enum event_category {
+  auth
+  connection
+  portfolio
+  chat
+}
+
+Enum event_status {
+  success
+  failure
+  warning
+}
+
+// =============================================================================
+// CORE USER TABLES
+// =============================================================================
+
+Table users {
+  id uuid [pk, default: `gen_random_uuid()`]
+  
+  // Authentication
+  email varchar(255) [not null, unique]
+  password_hash varchar(255) [not null]
+  email_verified boolean [default: false]
+  email_verified_at timestamptz
+  
+  // Profile
+  first_name varchar(100)
+  last_name varchar(100)
+  avatar_url varchar(500)
+  
+  // Preferences
+  preferred_currency varchar(3) [default: 'USD', note: 'ISO 4217 currency code']
+  timezone varchar(50) [default: 'UTC', note: 'IANA timezone']
+  locale varchar(10) [default: 'en-US']
+  
+  // Security
+  two_factor_enabled boolean [default: false]
+  two_factor_secret varchar(255) [note: 'Encrypted TOTP secret']
+  failed_login_count integer [default: 0]
+  locked_until timestamptz
+  last_login_at timestamptz
+  last_login_ip inet
+  
+  // Status
+  is_active boolean [default: true]
+  deleted_at timestamptz [note: 'Soft delete']
+  
+  // Timestamps
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+
+  indexes {
+    email
+    created_at
+  }
+}
+
+// =============================================================================
+// CONNECTIONS & PORTFOLIO
+// =============================================================================
+
+Table connections {
+  id uuid [pk, default: `gen_random_uuid()`]
+  
+  // Foreign Key
+  user_id uuid [not null, ref: > users.id]
+  
+  // Provider Identification
+  provider_type provider_type [not null, note: 'brokerage, exchange, wallet']
+  provider_id varchar(50) [not null, note: 'alpaca, coinbase, ethereum, etc.']
+  
+  // Account Info (for OAuth providers)
+  external_account_id varchar(255) [note: "Provider's account ID"]
+  account_name varchar(255) [note: 'Display name']
+  
+  // OAuth Tokens (encrypted)
+  access_token_encrypted text
+  refresh_token_encrypted text
+  token_expires_at timestamptz
+  token_scope varchar(500) [note: 'OAuth scopes granted']
+  
+  // Wallet-specific (for blockchain wallets)
+  wallet_address varchar(255) [note: 'Public address']
+  chain varchar(20) [note: 'ethereum, bitcoin, solana']
+  
+  // Sync Status
+  is_active boolean [default: true]
+  sync_status sync_status [default: 'pending']
+  sync_error_message text
+  last_sync_at timestamptz
+  last_successful_sync_at timestamptz
+  sync_frequency_minutes integer [default: 5]
+  
+  // Metadata
+  metadata jsonb [default: '{}', note: 'Provider-specific data']
+  
+  // Timestamps
+  connected_at timestamptz [default: `now()`]
+  disconnected_at timestamptz
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+
+  indexes {
+    user_id
+    (provider_type, provider_id)
+    sync_status
+    last_sync_at
+    (user_id, provider_type, provider_id) [unique]
+  }
+}
+
+Table holdings {
+  id uuid [pk, default: `gen_random_uuid()`]
+  
+  // Foreign Keys
+  user_id uuid [not null, ref: > users.id]
+  connection_id uuid [not null, ref: > connections.id]
+  
+  // Asset Identification
+  asset_type asset_type [not null, note: 'stock, etf, crypto, token']
+  symbol varchar(20) [not null, note: 'Ticker symbol (AAPL, BTC, ETH)']
+  name varchar(255) [note: 'Full name (Apple Inc., Bitcoin)']
+  
+  // For crypto tokens
+  contract_address varchar(255) [note: 'Token contract address']
+  chain varchar(20) [note: 'Blockchain (ethereum, solana, etc.)']
+  decimals integer [note: 'Token decimals']
+  
+  // Position Details
+  quantity decimal(30,18) [not null, note: 'High precision for crypto']
+  avg_cost_basis decimal(20,8) [note: 'Average cost per unit']
+  
+  // Current Valuation (updated by scraper)
+  current_price decimal(20,8)
+  market_value decimal(20,4) [note: 'quantity * current_price']
+  cost_basis_total decimal(20,4) [note: 'quantity * avg_cost_basis']
+  
+  // P&L Calculations
+  unrealized_pl decimal(20,4) [note: 'market_value - cost_basis_total']
+  unrealized_pl_percent decimal(10,4) [note: '(unrealized_pl / cost_basis_total) * 100']
+  day_pl decimal(20,4) [note: "Today's P&L"]
+  day_pl_percent decimal(10,4)
+  
+  // Source Data
+  source_position_id varchar(255) [note: "Provider's position ID"]
+  last_synced_at timestamptz
+  
+  // Timestamps
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+
+  indexes {
+    user_id
+    connection_id
+    symbol
+    asset_type
+    (user_id, symbol)
+  }
+}
+
+Table portfolio_snapshots {
+  id uuid [pk, default: `gen_random_uuid()`]
+  
+  // Foreign Key
+  user_id uuid [not null, ref: > users.id]
+  
+  // Snapshot Date
+  snapshot_date date [not null]
+  snapshot_time timestamptz [not null]
+  
+  // Portfolio Values
+  total_value decimal(20,4) [not null]
+  cash_balance decimal(20,4) [default: 0]
+  invested_value decimal(20,4) [note: 'total_value - cash_balance']
+  
+  // P&L
+  total_cost_basis decimal(20,4)
+  total_unrealized_pl decimal(20,4)
+  day_pl decimal(20,4)
+  day_pl_percent decimal(10,4)
+  
+  // Breakdown
+  stocks_value decimal(20,4) [default: 0]
+  crypto_value decimal(20,4) [default: 0]
+  
+  // Holdings Count
+  holdings_count integer [default: 0]
+  
+  // Detailed Holdings (JSON snapshot)
+  holdings_snapshot jsonb [note: 'Array of holdings at this point']
+  
+  // Timestamps
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    (user_id, snapshot_date) [unique]
+    snapshot_date
+  }
+}
+
+// =============================================================================
+// AI CHAT
+// =============================================================================
+
+Table chat_sessions {
+  id uuid [pk, default: `gen_random_uuid()`]
+  
+  // Foreign Key
+  user_id uuid [not null, ref: > users.id]
+  
+  // Session Info
+  title varchar(255) [note: 'Auto-generated or user-defined']
+  
+  // Status
+  is_archived boolean [default: false]
+  is_pinned boolean [default: false]
+  
+  // Metadata
+  message_count integer [default: 0]
+  total_tokens_used integer [default: 0]
+  
+  // Timestamps
+  last_message_at timestamptz
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+
+  indexes {
+    user_id
+    (user_id, updated_at)
+  }
+}
+
+Table chat_messages {
+  id uuid [pk, default: `gen_random_uuid()`]
+  
+  // Foreign Key
+  session_id uuid [not null, ref: > chat_sessions.id]
+  
+  // Message Content
+  role message_role [not null, note: 'user, assistant, system']
+  content text [not null]
+  
+  // AI Response Metadata
+  citations jsonb [note: 'Array of citation objects']
+  tool_calls jsonb [note: 'Array of tool call records']
+  
+  // Usage Tracking
+  model_used varchar(100) [note: 'claude-3-5-sonnet-20241022']
+  input_tokens integer
+  output_tokens integer
+  processing_time_ms integer
+  
+  // Timestamps
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    (session_id, created_at)
+  }
+
+  Note: '''
+    citations JSON structure:
+    {
+      "citations": [
+        {
+          "index": 1,
+          "type": "stock_quote",
+          "source": "Yahoo Finance",
+          "symbol": "AAPL",
+          "url": "https://finance.yahoo.com/quote/AAPL",
+          "timestamp": "2025-11-27T10:30:00Z",
+          "text": "AAPL trading at $175.50"
+        }
+      ]
+    }
+  '''
+}
+
+// =============================================================================
+// WATCHLISTS & ALERTS
+// =============================================================================
+
+Table watchlists {
+  id uuid [pk, default: `gen_random_uuid()`]
+  
+  // Foreign Key
+  user_id uuid [not null, ref: > users.id]
+  
+  // Watchlist Info
+  name varchar(100) [not null]
+  description text
+  color varchar(7) [note: 'Hex color (#FF5733)']
+  icon varchar(50) [note: 'Icon identifier']
+  
+  // Display Order
+  sort_order integer [default: 0]
+  
+  // Timestamps
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+
+  indexes {
+    user_id
+  }
+}
+
+Table watchlist_items {
+  id uuid [pk, default: `gen_random_uuid()`]
+  
+  // Foreign Key
+  watchlist_id uuid [not null, ref: > watchlists.id]
+  
+  // Asset Info
+  asset_type asset_type [not null, note: 'stock, crypto']
+  symbol varchar(20) [not null]
+  name varchar(255)
+  
+  // Notes
+  notes text
+  target_price decimal(20,8)
+  
+  // Display Order
+  sort_order integer [default: 0]
+  
+  // Timestamps
+  added_at timestamptz [default: `now()`]
+
+  indexes {
+    watchlist_id
+    symbol
+    (watchlist_id, asset_type, symbol) [unique]
+  }
+}
+
+Table alerts {
+  id uuid [pk, default: `gen_random_uuid()`]
+  
+  // Foreign Key
+  user_id uuid [not null, ref: > users.id]
+  
+  // Asset Info
+  asset_type asset_type [not null, note: 'stock, crypto']
+  symbol varchar(20) [not null]
+  
+  // Alert Configuration
+  alert_type alert_type [not null, note: 'price_above, price_below, etc.']
+  condition alert_condition [not null, note: 'gt, lt, gte, lte, eq']
+  threshold_value decimal(20,8) [not null]
+  threshold_unit varchar(10) [default: 'value', note: 'value, percent']
+  
+  // Notification Settings
+  notify_email boolean [default: true]
+  notify_push boolean [default: false]
+  notify_sms boolean [default: false]
+  
+  // Status
+  is_active boolean [default: true]
+  is_repeating boolean [default: false, note: 'Trigger once or multiple times']
+  cooldown_minutes integer [default: 60, note: 'Min time between repeated triggers']
+  
+  // Trigger History
+  last_triggered_at timestamptz
+  trigger_count integer [default: 0]
+  last_checked_price decimal(20,8)
+  
+  // Timestamps
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+  expires_at timestamptz [note: 'Optional expiration']
+
+  indexes {
+    user_id
+    (is_active, symbol)
+    symbol
+  }
+}
+
+// =============================================================================
+// MARKET DATA CACHE
+// =============================================================================
+
+Table stock_quotes_cache {
+  symbol varchar(20) [pk]
+  
+  // Company Info
+  name varchar(255)
+  exchange varchar(50)
+  
+  // Price Data
+  price decimal(20,4) [not null]
+  open decimal(20,4)
+  previous_close decimal(20,4)
+  change decimal(20,4)
+  change_percent decimal(10,4)
+  
+  // Day Range
+  day_high decimal(20,4)
+  day_low decimal(20,4)
+  
+  // 52 Week Range
+  year_high decimal(20,4)
+  year_low decimal(20,4)
+  
+  // Volume & Market Data
+  volume bigint
+  avg_volume bigint
+  market_cap bigint
+  
+  // Valuation Metrics
+  pe_ratio decimal(10,4)
+  eps decimal(10,4)
+  dividend_yield decimal(10,4)
+  beta decimal(10,4)
+  
+  // Data Source
+  data_source varchar(50) [not null, note: 'yahoo_finance, finnhub, polygon']
+  
+  // Timestamps
+  quote_time timestamptz [note: 'When the quote was generated']
+  fetched_at timestamptz [default: `now()`]
+  
+  // Market Status
+  market_state market_state [note: 'pre, regular, post, closed']
+
+  indexes {
+    fetched_at
+  }
+}
+
+Table crypto_quotes_cache {
+  symbol varchar(20) [pk]
+  
+  // Identifiers
+  coingecko_id varchar(100)
+  coinmarketcap_id integer
+  name varchar(255)
+  
+  // Price Data (in USD)
+  price decimal(30,18) [not null, note: 'High precision for small-cap coins']
+  price_btc decimal(30,18) [note: 'Price in BTC']
+  price_eth decimal(30,18) [note: 'Price in ETH']
+  
+  // Changes
+  change_1h decimal(10,4)
+  change_24h decimal(10,4)
+  change_7d decimal(10,4)
+  change_30d decimal(10,4)
+  
+  // Market Data
+  market_cap bigint
+  market_cap_rank integer
+  fully_diluted_valuation bigint
+  
+  // Volume
+  volume_24h bigint
+  volume_change_24h decimal(10,4)
+  
+  // Supply
+  circulating_supply decimal(30,8)
+  total_supply decimal(30,8)
+  max_supply decimal(30,8)
+  
+  // All-Time Data
+  ath decimal(30,18)
+  ath_date timestamptz
+  ath_change_percent decimal(10,4)
+  atl decimal(30,18)
+  atl_date timestamptz
+  atl_change_percent decimal(10,4)
+  
+  // Data Source
+  data_source varchar(50) [not null, note: 'coingecko, binance, coinmarketcap']
+  
+  // Timestamps
+  last_updated timestamptz [note: "Provider's last update"]
+  fetched_at timestamptz [default: `now()`]
+
+  indexes {
+    fetched_at
+    coingecko_id
+    market_cap_rank
+  }
+}
+
+Table company_profiles_cache {
+  symbol varchar(20) [pk]
+  
+  // Basic Info
+  name varchar(255)
+  asset_type asset_type [not null, note: 'stock, crypto']
+  
+  // Stock-specific
+  exchange varchar(50)
+  sector varchar(100)
+  industry varchar(100)
+  
+  // Description
+  description text
+  
+  // Company Data (stocks)
+  ceo varchar(255)
+  employees integer
+  headquarters varchar(255)
+  founded integer [note: 'Year']
+  
+  // Crypto-specific
+  categories text[] [note: 'Array of categories']
+  platforms jsonb [note: 'Contract addresses per chain']
+  
+  // Links
+  website varchar(500)
+  logo_url varchar(500)
+  
+  // Data Source
+  data_source varchar(50) [not null]
+  
+  // Timestamps
+  fetched_at timestamptz [default: `now()`]
+
+  indexes {
+    asset_type
+  }
+}
+
+// =============================================================================
+// NEWS & FILINGS CACHE
+// =============================================================================
+
+Table news_articles {
+  id uuid [pk, default: `gen_random_uuid()`]
+  
+  // Article Info
+  title varchar(500) [not null]
+  summary text
+  content text [note: 'Full content if available']
+  
+  // Source
+  source_name varchar(100) [not null, note: 'Reuters, Bloomberg, etc.']
+  source_url varchar(1000) [not null]
+  url varchar(1000) [not null, unique]
+  
+  // Media
+  image_url varchar(1000)
+  
+  // Classification
+  category varchar(50) [note: 'earnings, merger, general, etc.']
+  sentiment sentiment [note: 'positive, negative, neutral']
+  sentiment_score decimal(5,4) [note: '-1.0 to 1.0']
+  
+  // Timestamps
+  published_at timestamptz [not null]
+  fetched_at timestamptz [default: `now()`]
+
+  indexes {
+    published_at
+    url
+  }
+}
+
+Table news_article_symbols {
+  article_id uuid [ref: > news_articles.id]
+  asset_type asset_type [not null]
+  symbol varchar(20) [not null]
+  
+  // Relevance
+  is_primary boolean [default: false, note: 'Main subject of article']
+  relevance_score decimal(5,4) [note: '0.0 to 1.0']
+
+  indexes {
+    (article_id, asset_type, symbol) [pk]
+    (symbol, asset_type)
+  }
+}
+
+Table sec_filings {
+  id uuid [pk, default: `gen_random_uuid()`]
+  
+  // Company Identification
+  cik varchar(20) [not null, note: 'SEC Central Index Key']
+  symbol varchar(20) [note: 'Ticker if mapped']
+  company_name varchar(255)
+  
+  // Filing Info
+  form_type varchar(20) [not null, note: '10-K, 10-Q, 8-K, etc.']
+  filing_date date [not null]
+  accepted_date timestamptz
+  report_date date [note: 'Period of report']
+  
+  // Document References
+  accession_number varchar(30) [not null, unique]
+  file_number varchar(30)
+  
+  // URLs
+  filing_url varchar(500) [not null, note: 'SEC index page']
+  primary_document_url varchar(500) [note: 'Main document']
+  
+  // Content
+  primary_document_name varchar(255)
+  extracted_sections jsonb [note: 'Key sections extracted']
+  
+  // Timestamps
+  fetched_at timestamptz [default: `now()`]
+
+  indexes {
+    symbol
+    cik
+    form_type
+    filing_date
+    accession_number [unique]
+  }
+}
+
+// =============================================================================
+// AUDIT & ANALYTICS
+// =============================================================================
+
+Table audit_logs {
+  id uuid [pk, default: `gen_random_uuid()`]
+  
+  // Actor
+  user_id uuid [ref: > users.id]
+  
+  // Event Info
+  event_type varchar(50) [not null, note: 'login, logout, connection_added, etc.']
+  event_category event_category [not null, note: 'auth, connection, portfolio, chat']
+  
+  // Details
+  description text
+  metadata jsonb [default: '{}']
+  
+  // Request Context
+  ip_address inet
+  user_agent varchar(500)
+  request_id varchar(100)
+  
+  // Status
+  status event_status [not null, note: 'success, failure, warning']
+  error_message text
+  
+  // Timestamps
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    user_id
+    event_type
+    created_at
+  }
+
+  Note: 'Consider partitioning by month for large-scale deployments'
+}
+
+Table api_usage_logs {
+  id uuid [pk, default: `gen_random_uuid()`]
+  
+  // Provider Info
+  provider varchar(50) [not null, note: 'yahoo_finance, coingecko, anthropic']
+  endpoint varchar(255)
+  
+  // Request Details
+  request_params jsonb
+  
+  // Response
+  status_code integer
+  response_time_ms integer
+  
+  // Costs (for paid APIs)
+  tokens_used integer [note: 'For AI APIs']
+  estimated_cost decimal(10,6) [note: 'In USD']
+  
+  // Context
+  triggered_by varchar(50) [note: 'scheduler, user_request, webhook']
+  user_id uuid [note: 'If user-triggered']
+  
+  // Timestamps
+  created_at timestamptz [default: `now()`]
+
+  indexes {
+    provider
+    created_at
+  }
+
+  Note: 'Consider partitioning by day for high-volume scenarios'
+}
+
+// =============================================================================
+// AUTH-04: TWO-FACTOR AUTHENTICATION
+// =============================================================================
+
+Table two_factor_backup_codes {
+  id uuid [pk, default: `gen_random_uuid()`]
+  
+  // Foreign Key
+  user_id uuid [not null, ref: > users.id]
+  
+  // Backup Code (hashed)
+  code_hash varchar(255) [not null, note: 'bcrypt hash of code']
+  
+  // Status
+  is_used boolean [default: false]
+  used_at timestamptz
+  used_ip inet
+  
+  // Timestamps
+  created_at timestamptz [default: `now()`]
+  expires_at timestamptz [note: 'Optional expiration']
+
+  indexes {
+    user_id
+    (user_id, is_used)
+    (user_id, code_hash) [unique]
+  }
+}
+
+// =============================================================================
+// DATA-06: ON-CHAIN METRICS CACHE
+// =============================================================================
+
+Table crypto_onchain_cache {
+  symbol varchar(20) [pk]
+  
+  // Chain Info
+  chain varchar(20) [not null, note: 'ethereum, bitcoin, solana']
+  contract_address varchar(255) [note: 'For tokens']
+  
+  // Activity Metrics
+  active_addresses_24h bigint
+  active_addresses_7d bigint
+  transaction_count_24h bigint
+  transaction_volume_24h decimal(30,8) [note: 'In native token']
+  transaction_volume_usd_24h decimal(20,4)
+  
+  // Network Metrics
+  avg_transaction_fee decimal(20,8) [note: 'In native token']
+  avg_transaction_fee_usd decimal(10,4)
+  avg_block_time decimal(10,2) [note: 'In seconds']
+  hashrate decimal(30,4) [note: 'For PoW chains']
+  
+  // Holder Distribution
+  total_holders bigint
+  top_10_holders_percent decimal(6,2)
+  top_100_holders_percent decimal(6,2)
+  
+  // Exchange Flows
+  exchange_inflow_24h decimal(30,8)
+  exchange_outflow_24h decimal(30,8)
+  exchange_netflow_24h decimal(30,8)
+  exchange_reserve decimal(30,8)
+  
+  // Whale Activity
+  whale_transactions_24h integer [note: 'Large transactions count']
+  whale_volume_24h decimal(30,8)
+  
+  // DeFi Metrics
+  tvl decimal(20,4) [note: 'Total Value Locked (USD)']
+  tvl_change_24h decimal(10,4)
+  
+  // Data Source
+  data_source varchar(50) [not null, note: 'etherscan, glassnode, dune']
+  
+  // Timestamps
+  last_updated timestamptz
+  fetched_at timestamptz [default: `now()`]
+
+  indexes {
+    chain
+    fetched_at
+  }
+}
+
+// =============================================================================
+// WATCH-03: NOTIFICATIONS (Optional Enhancement)
+// =============================================================================
+
+Table notifications {
+  id uuid [pk, default: `gen_random_uuid()`]
+  
+  // Foreign Key
+  user_id uuid [not null, ref: > users.id]
+  
+  // Notification Type
+  type varchar(50) [not null, note: 'alert_triggered, sync_failed, system, etc.']
+  category varchar(30) [not null, note: 'alert, portfolio, system, chat']
+  
+  // Content
+  title varchar(255) [not null]
+  message text [not null]
+  
+  // Related Entity
+  entity_type varchar(30) [note: 'alert, connection, holding']
+  entity_id uuid
+  
+  // Action URL
+  action_url varchar(500) [note: 'Deep link in app']
+  
+  // Status
+  is_read boolean [default: false]
+  read_at timestamptz
+  
+  // Delivery Status
+  email_sent boolean [default: false]
+  email_sent_at timestamptz
+  push_sent boolean [default: false]
+  push_sent_at timestamptz
+  
+  // Metadata
+  metadata jsonb [default: '{}']
+  
+  // Timestamps
+  created_at timestamptz [default: `now()`]
+  expires_at timestamptz [note: 'Auto-delete old notifications']
+
+  indexes {
+    user_id
+    (user_id, is_read)
+    created_at
+    type
+  }
+}
+
+Table notification_settings {
+  id uuid [pk, default: `gen_random_uuid()`]
+  
+  // Foreign Key (one-to-one with users)
+  user_id uuid [not null, unique, ref: - users.id]
+  
+  // Global Settings
+  notifications_enabled boolean [default: true]
+  quiet_hours_enabled boolean [default: false]
+  quiet_hours_start time
+  quiet_hours_end time
+  
+  // Email Preferences
+  email_enabled boolean [default: true]
+  email_digest varchar(20) [default: 'instant', note: 'instant, daily, weekly, none']
+  email_alerts boolean [default: true]
+  email_portfolio_summary boolean [default: true]
+  email_news_digest boolean [default: false]
+  email_marketing boolean [default: false]
+  
+  // Push Preferences
+  push_enabled boolean [default: false]
+  push_alerts boolean [default: true]
+  push_portfolio_changes boolean [default: false]
+  push_chat_responses boolean [default: false]
+  
+  // SMS Preferences
+  sms_enabled boolean [default: false]
+  sms_alerts_only boolean [default: true]
+  phone_number varchar(20)
+  phone_verified boolean [default: false]
+  
+  // Alert-Specific Settings
+  alert_price_threshold decimal(5,2) [default: 5.00, note: 'Only alert if change > X%']
+  alert_cooldown_minutes integer [default: 60]
+  
+  // Timestamps
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+}
+
+// =============================================================================
+// TABLE GROUPS FOR VISUALIZATION
+// =============================================================================
+
+TableGroup user_domain {
+  users
+  two_factor_backup_codes
+  connections
+  holdings
+  portfolio_snapshots
+}
+
+TableGroup chat_domain {
+  chat_sessions
+  chat_messages
+}
+
+TableGroup watchlist_domain {
+  watchlists
+  watchlist_items
+  alerts
+}
+
+TableGroup notification_domain {
+  notifications
+  notification_settings
+}
+
+TableGroup market_data_cache {
+  stock_quotes_cache
+  crypto_quotes_cache
+  crypto_onchain_cache
+  company_profiles_cache
+}
+
+TableGroup news_cache {
+  news_articles
+  news_article_symbols
+  sec_filings
+}
+
+TableGroup analytics {
+  audit_logs
+  api_usage_logs
+}
