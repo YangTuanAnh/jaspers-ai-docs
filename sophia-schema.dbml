@@ -1,13 +1,19 @@
 // SOPHIA — Your Intelligent Market Mind
-// Database Schema (DBML)
-// Version: 1.0
+// Database Schema (DBML) v2.0
+// Aligned with PRD v2.0
+// - Novu handles notifications (no notification tables)
+// - Portkey handles AI logging (no api_usage_logs table)
 
 Project sophia {
   database_type: 'PostgreSQL'
   Note: '''
-    # SOPHIA Database Schema
-    Unified investment intelligence platform that aggregates portfolios 
-    across stock brokerages and cryptocurrency exchanges with AI-powered insights.
+    # SOPHIA Database Schema v2.0
+    
+    Unified investment intelligence platform with:
+    - Multi-platform portfolio aggregation
+    - AI-powered insights via Claude (Portkey gateway)
+    - Multi-channel notifications via Novu
+    - On-chain analytics for crypto
   '''
 }
 
@@ -106,13 +112,18 @@ Table users {
   timezone varchar(50) [default: 'UTC', note: 'IANA timezone']
   locale varchar(10) [default: 'en-US']
   
-  // Security
+  // Two-Factor Authentication
   two_factor_enabled boolean [default: false]
   two_factor_secret varchar(255) [note: 'Encrypted TOTP secret']
+  
+  // Security
   failed_login_count integer [default: 0]
   locked_until timestamptz
   last_login_at timestamptz
   last_login_ip inet
+  
+  // Novu Integration
+  novu_subscriber_id varchar(255) [note: 'Novu subscriber ID for notifications']
   
   // Status
   is_active boolean [default: true]
@@ -125,7 +136,39 @@ Table users {
   indexes {
     email
     created_at
+    novu_subscriber_id
   }
+}
+
+// =============================================================================
+// TWO-FACTOR AUTHENTICATION (AUTH-04)
+// =============================================================================
+
+Table two_factor_backup_codes {
+  id uuid [pk, default: `gen_random_uuid()`]
+  
+  // Foreign Key
+  user_id uuid [not null, ref: > users.id]
+  
+  // Backup Code (hashed)
+  code_hash varchar(255) [not null, note: 'bcrypt hash of code']
+  
+  // Status
+  is_used boolean [default: false]
+  used_at timestamptz
+  used_ip inet
+  
+  // Timestamps
+  created_at timestamptz [default: `now()`]
+  expires_at timestamptz [note: 'Optional expiration']
+
+  indexes {
+    user_id
+    (user_id, is_used)
+    (user_id, code_hash) [unique]
+  }
+  
+  Note: 'Stores hashed one-time backup codes for 2FA recovery'
 }
 
 // =============================================================================
@@ -272,7 +315,7 @@ Table portfolio_snapshots {
 }
 
 // =============================================================================
-// AI CHAT
+// AI CHAT (Logging via Portkey)
 // =============================================================================
 
 Table chat_sessions {
@@ -317,29 +360,36 @@ Table chat_messages {
   citations jsonb [note: 'Array of citation objects']
   tool_calls jsonb [note: 'Array of tool call records']
   
-  // Usage Tracking
+  // Usage Tracking (summary - detailed logs in Portkey)
   model_used varchar(100) [note: 'claude-3-5-sonnet-20241022']
   input_tokens integer
   output_tokens integer
   processing_time_ms integer
+  
+  // Portkey Integration
+  portkey_trace_id varchar(100) [note: 'Link to Portkey trace for debugging']
   
   // Timestamps
   created_at timestamptz [default: `now()`]
 
   indexes {
     (session_id, created_at)
+    portkey_trace_id
   }
 
   Note: '''
+    AI API logs (detailed) are stored in Portkey dashboard.
+    This table stores summary metrics and trace ID for linking.
+    
     citations JSON structure:
     {
       "citations": [
         {
           "index": 1,
-          "type": "stock_quote",
+          "type": "stock_quote|crypto_quote|onchain|news|filing|portfolio",
           "source": "Yahoo Finance",
           "symbol": "AAPL",
-          "url": "https://finance.yahoo.com/quote/AAPL",
+          "url": "https://...",
           "timestamp": "2025-11-27T10:30:00Z",
           "text": "AAPL trading at $175.50"
         }
@@ -349,7 +399,7 @@ Table chat_messages {
 }
 
 // =============================================================================
-// WATCHLISTS & ALERTS
+// WATCHLISTS & ALERTS (Notifications via Novu)
 // =============================================================================
 
 Table watchlists {
@@ -420,7 +470,7 @@ Table alerts {
   threshold_value decimal(20,8) [not null]
   threshold_unit varchar(10) [default: 'value', note: 'value, percent']
   
-  // Notification Settings
+  // Notification Settings (delivered via Novu)
   notify_email boolean [default: true]
   notify_push boolean [default: false]
   notify_sms boolean [default: false]
@@ -445,6 +495,12 @@ Table alerts {
     (is_active, symbol)
     symbol
   }
+  
+  Note: '''
+    When an alert triggers, the backend sends a notification via Novu.
+    Novu handles delivery channels (email, push, SMS) and preferences.
+    Notification history is stored in Novu dashboard.
+  '''
 }
 
 // =============================================================================
@@ -552,6 +608,64 @@ Table crypto_quotes_cache {
     coingecko_id
     market_cap_rank
   }
+}
+
+// =============================================================================
+// ON-CHAIN METRICS CACHE (DATA-06)
+// =============================================================================
+
+Table crypto_onchain_cache {
+  symbol varchar(20) [pk]
+  
+  // Chain Info
+  chain varchar(20) [not null, note: 'ethereum, bitcoin, solana']
+  contract_address varchar(255) [note: 'For tokens']
+  
+  // Activity Metrics
+  active_addresses_24h bigint
+  active_addresses_7d bigint
+  transaction_count_24h bigint
+  transaction_volume_24h decimal(30,8) [note: 'In native token']
+  transaction_volume_usd_24h decimal(20,4)
+  
+  // Network Metrics
+  avg_transaction_fee decimal(20,8) [note: 'In native token']
+  avg_transaction_fee_usd decimal(10,4)
+  avg_block_time decimal(10,2) [note: 'In seconds']
+  hashrate decimal(30,4) [note: 'For PoW chains']
+  
+  // Holder Distribution
+  total_holders bigint
+  top_10_holders_percent decimal(6,2)
+  top_100_holders_percent decimal(6,2)
+  
+  // Exchange Flows
+  exchange_inflow_24h decimal(30,8)
+  exchange_outflow_24h decimal(30,8)
+  exchange_netflow_24h decimal(30,8)
+  exchange_reserve decimal(30,8)
+  
+  // Whale Activity
+  whale_transactions_24h integer [note: 'Large transactions count']
+  whale_volume_24h decimal(30,8)
+  
+  // DeFi Metrics
+  tvl decimal(20,4) [note: 'Total Value Locked (USD)']
+  tvl_change_24h decimal(10,4)
+  
+  // Data Source
+  data_source varchar(50) [not null, note: 'etherscan, glassnode, dune']
+  
+  // Timestamps
+  last_updated timestamptz
+  fetched_at timestamptz [default: `now()`]
+
+  indexes {
+    chain
+    fetched_at
+  }
+  
+  Note: 'On-chain analytics data for DATA-06 user story'
 }
 
 Table company_profiles_cache {
@@ -683,7 +797,7 @@ Table sec_filings {
 }
 
 // =============================================================================
-// AUDIT & ANALYTICS
+// AUDIT LOG (Security events only - AI logs in Portkey, Notifications in Novu)
 // =============================================================================
 
 Table audit_logs {
@@ -718,225 +832,26 @@ Table audit_logs {
     created_at
   }
 
-  Note: 'Consider partitioning by month for large-scale deployments'
-}
-
-Table api_usage_logs {
-  id uuid [pk, default: `gen_random_uuid()`]
-  
-  // Provider Info
-  provider varchar(50) [not null, note: 'yahoo_finance, coingecko, anthropic']
-  endpoint varchar(255)
-  
-  // Request Details
-  request_params jsonb
-  
-  // Response
-  status_code integer
-  response_time_ms integer
-  
-  // Costs (for paid APIs)
-  tokens_used integer [note: 'For AI APIs']
-  estimated_cost decimal(10,6) [note: 'In USD']
-  
-  // Context
-  triggered_by varchar(50) [note: 'scheduler, user_request, webhook']
-  user_id uuid [note: 'If user-triggered']
-  
-  // Timestamps
-  created_at timestamptz [default: `now()`]
-
-  indexes {
-    provider
-    created_at
-  }
-
-  Note: 'Consider partitioning by day for high-volume scenarios'
-}
-
-// =============================================================================
-// AUTH-04: TWO-FACTOR AUTHENTICATION
-// =============================================================================
-
-Table two_factor_backup_codes {
-  id uuid [pk, default: `gen_random_uuid()`]
-  
-  // Foreign Key
-  user_id uuid [not null, ref: > users.id]
-  
-  // Backup Code (hashed)
-  code_hash varchar(255) [not null, note: 'bcrypt hash of code']
-  
-  // Status
-  is_used boolean [default: false]
-  used_at timestamptz
-  used_ip inet
-  
-  // Timestamps
-  created_at timestamptz [default: `now()`]
-  expires_at timestamptz [note: 'Optional expiration']
-
-  indexes {
-    user_id
-    (user_id, is_used)
-    (user_id, code_hash) [unique]
-  }
-}
-
-// =============================================================================
-// DATA-06: ON-CHAIN METRICS CACHE
-// =============================================================================
-
-Table crypto_onchain_cache {
-  symbol varchar(20) [pk]
-  
-  // Chain Info
-  chain varchar(20) [not null, note: 'ethereum, bitcoin, solana']
-  contract_address varchar(255) [note: 'For tokens']
-  
-  // Activity Metrics
-  active_addresses_24h bigint
-  active_addresses_7d bigint
-  transaction_count_24h bigint
-  transaction_volume_24h decimal(30,8) [note: 'In native token']
-  transaction_volume_usd_24h decimal(20,4)
-  
-  // Network Metrics
-  avg_transaction_fee decimal(20,8) [note: 'In native token']
-  avg_transaction_fee_usd decimal(10,4)
-  avg_block_time decimal(10,2) [note: 'In seconds']
-  hashrate decimal(30,4) [note: 'For PoW chains']
-  
-  // Holder Distribution
-  total_holders bigint
-  top_10_holders_percent decimal(6,2)
-  top_100_holders_percent decimal(6,2)
-  
-  // Exchange Flows
-  exchange_inflow_24h decimal(30,8)
-  exchange_outflow_24h decimal(30,8)
-  exchange_netflow_24h decimal(30,8)
-  exchange_reserve decimal(30,8)
-  
-  // Whale Activity
-  whale_transactions_24h integer [note: 'Large transactions count']
-  whale_volume_24h decimal(30,8)
-  
-  // DeFi Metrics
-  tvl decimal(20,4) [note: 'Total Value Locked (USD)']
-  tvl_change_24h decimal(10,4)
-  
-  // Data Source
-  data_source varchar(50) [not null, note: 'etherscan, glassnode, dune']
-  
-  // Timestamps
-  last_updated timestamptz
-  fetched_at timestamptz [default: `now()`]
-
-  indexes {
-    chain
-    fetched_at
-  }
-}
-
-// =============================================================================
-// WATCH-03: NOTIFICATIONS (Optional Enhancement)
-// =============================================================================
-
-Table notifications {
-  id uuid [pk, default: `gen_random_uuid()`]
-  
-  // Foreign Key
-  user_id uuid [not null, ref: > users.id]
-  
-  // Notification Type
-  type varchar(50) [not null, note: 'alert_triggered, sync_failed, system, etc.']
-  category varchar(30) [not null, note: 'alert, portfolio, system, chat']
-  
-  // Content
-  title varchar(255) [not null]
-  message text [not null]
-  
-  // Related Entity
-  entity_type varchar(30) [note: 'alert, connection, holding']
-  entity_id uuid
-  
-  // Action URL
-  action_url varchar(500) [note: 'Deep link in app']
-  
-  // Status
-  is_read boolean [default: false]
-  read_at timestamptz
-  
-  // Delivery Status
-  email_sent boolean [default: false]
-  email_sent_at timestamptz
-  push_sent boolean [default: false]
-  push_sent_at timestamptz
-  
-  // Metadata
-  metadata jsonb [default: '{}']
-  
-  // Timestamps
-  created_at timestamptz [default: `now()`]
-  expires_at timestamptz [note: 'Auto-delete old notifications']
-
-  indexes {
-    user_id
-    (user_id, is_read)
-    created_at
-    type
-  }
-}
-
-Table notification_settings {
-  id uuid [pk, default: `gen_random_uuid()`]
-  
-  // Foreign Key (one-to-one with users)
-  user_id uuid [not null, unique, ref: - users.id]
-  
-  // Global Settings
-  notifications_enabled boolean [default: true]
-  quiet_hours_enabled boolean [default: false]
-  quiet_hours_start time
-  quiet_hours_end time
-  
-  // Email Preferences
-  email_enabled boolean [default: true]
-  email_digest varchar(20) [default: 'instant', note: 'instant, daily, weekly, none']
-  email_alerts boolean [default: true]
-  email_portfolio_summary boolean [default: true]
-  email_news_digest boolean [default: false]
-  email_marketing boolean [default: false]
-  
-  // Push Preferences
-  push_enabled boolean [default: false]
-  push_alerts boolean [default: true]
-  push_portfolio_changes boolean [default: false]
-  push_chat_responses boolean [default: false]
-  
-  // SMS Preferences
-  sms_enabled boolean [default: false]
-  sms_alerts_only boolean [default: true]
-  phone_number varchar(20)
-  phone_verified boolean [default: false]
-  
-  // Alert-Specific Settings
-  alert_price_threshold decimal(5,2) [default: 5.00, note: 'Only alert if change > X%']
-  alert_cooldown_minutes integer [default: 60]
-  
-  // Timestamps
-  created_at timestamptz [default: `now()`]
-  updated_at timestamptz [default: `now()`]
+  Note: '''
+    Security and application audit logs only.
+    
+    AI API logs → Portkey Dashboard
+    Notification logs → Novu Dashboard
+    
+    Consider partitioning by month for large-scale deployments.
+  '''
 }
 
 // =============================================================================
 // TABLE GROUPS FOR VISUALIZATION
 // =============================================================================
 
-TableGroup user_domain {
+TableGroup user_auth {
   users
   two_factor_backup_codes
+}
+
+TableGroup portfolio_domain {
   connections
   holdings
   portfolio_snapshots
@@ -953,11 +868,6 @@ TableGroup watchlist_domain {
   alerts
 }
 
-TableGroup notification_domain {
-  notifications
-  notification_settings
-}
-
 TableGroup market_data_cache {
   stock_quotes_cache
   crypto_quotes_cache
@@ -971,7 +881,26 @@ TableGroup news_cache {
   sec_filings
 }
 
-TableGroup analytics {
+TableGroup audit {
   audit_logs
-  api_usage_logs
 }
+
+// =============================================================================
+// NOTES
+// =============================================================================
+
+// External Services (not in database):
+// 
+// PORTKEY (AI Observability)
+// - All AI request/response logs
+// - Token usage tracking
+// - Cost analytics
+// - Latency metrics
+// - Prompt caching
+// 
+// NOVU (Notifications)
+// - Notification delivery logs
+// - User preferences
+// - Channel management (email, push, SMS)
+// - Digest scheduling
+// - In-app notification inbox
