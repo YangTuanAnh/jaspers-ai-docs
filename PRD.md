@@ -1413,7 +1413,7 @@ NEXT_PUBLIC_API_URL=http://localhost:3000/api
 - [REST API Design](https://restfulapi.net/)
 - [OAuth 2.0 Security](https://oauth.net/2/)
 - [PostgreSQL Performance](https://www.postgresql.org/docs/current/performance-tips.html)
-s
+
 ### Appendix C: Change Log
 
 | Version | Date | Changes | Author |
