@@ -563,14 +563,16 @@ Table crypto_quotes_cache {
   coinmarketcap_id integer
   name varchar(255)
   
-  // Price Data (in USD)
+  // Price Data (aligned with CryptoQuoteResponseDTO)
   price decimal(30,18) [not null, note: 'High precision for small-cap coins']
+  price_24h_ago decimal(30,18) [note: 'Price 24 hours ago for change calculation']
   price_btc decimal(30,18) [note: 'Price in BTC']
   price_eth decimal(30,18) [note: 'Price in ETH']
   
-  // Changes
+  // Changes (aligned with CryptoQuoteResponseDTO)
+  change_24h decimal(20,4) [note: 'Absolute change in 24h']
+  change_percent_24h decimal(10,4) [note: 'Percentage change in 24h']
   change_1h decimal(10,4)
-  change_24h decimal(10,4)
   change_7d decimal(10,4)
   change_30d decimal(10,4)
   
@@ -579,9 +581,13 @@ Table crypto_quotes_cache {
   market_cap_rank integer
   fully_diluted_valuation bigint
   
-  // Volume
-  volume_24h bigint
+  // Volume (aligned with CryptoQuoteResponseDTO)
+  volume_24h bigint [note: '24-hour trading volume']
   volume_change_24h decimal(10,4)
+  
+  // Price Range (aligned with CryptoQuoteResponseDTO)
+  high_24h decimal(30,18) [note: '24h high price']
+  low_24h decimal(30,18) [note: '24h low price']
   
   // Supply
   circulating_supply decimal(30,8)
@@ -596,10 +602,9 @@ Table crypto_quotes_cache {
   atl_date timestamptz
   atl_change_percent decimal(10,4)
   
-  // Data Source
+  // Data Source & Timestamps (aligned with CryptoQuoteResponseDTO)
   data_source varchar(50) [not null, note: 'coingecko, binance, coinmarketcap']
-  
-  // Timestamps
+  quote_time timestamptz [note: 'When the quote was generated']
   last_updated timestamptz [note: "Provider's last update"]
   fetched_at timestamptz [default: `now()`]
 
@@ -621,42 +626,41 @@ Table crypto_onchain_cache {
   chain varchar(20) [not null, note: 'ethereum, bitcoin, solana']
   contract_address varchar(255) [note: 'For tokens']
   
-  // Activity Metrics
-  active_addresses_24h bigint
+  // Activity Metrics (aligned with OnChainMetricsResponseDTO)
+  active_addresses_24h bigint [note: 'Active addresses in last 24h']
   active_addresses_7d bigint
-  transaction_count_24h bigint
-  transaction_volume_24h decimal(30,8) [note: 'In native token']
-  transaction_volume_usd_24h decimal(20,4)
+  transaction_count_24h bigint [note: 'Transaction count in last 24h']
+  transaction_volume_24h decimal(30,8) [note: 'Transaction volume in native token']
+  transaction_volume_usd_24h decimal(20,4) [note: 'Transaction volume in USD']
   
   // Network Metrics
-  avg_transaction_fee decimal(20,8) [note: 'In native token']
+  avg_transaction_fee decimal(20,8) [note: 'Average transaction fee in native token']
   avg_transaction_fee_usd decimal(10,4)
-  avg_block_time decimal(10,2) [note: 'In seconds']
-  hashrate decimal(30,4) [note: 'For PoW chains']
+  avg_block_time decimal(10,2) [note: 'Average block time in seconds']
+  hashrate decimal(30,4) [note: 'Network hashrate (PoW chains)']
   
-  // Holder Distribution
+  // Holder Distribution (aligned with OnChainMetricsResponseDTO)
   total_holders bigint
-  top_10_holders_percent decimal(6,2)
+  top_10_holders_percent decimal(6,2) [note: 'Top 10 holders percentage']
   top_100_holders_percent decimal(6,2)
   
-  // Exchange Flows
-  exchange_inflow_24h decimal(30,8)
-  exchange_outflow_24h decimal(30,8)
-  exchange_netflow_24h decimal(30,8)
-  exchange_reserve decimal(30,8)
+  // Exchange Flows (aligned with OnChainMetricsResponseDTO)
+  exchange_inflow_24h decimal(30,8) [note: 'Exchange inflow in last 24h']
+  exchange_outflow_24h decimal(30,8) [note: 'Exchange outflow in last 24h']
+  exchange_netflow_24h decimal(30,8) [note: 'Net exchange flow (inflow - outflow)']
+  exchange_reserve decimal(30,8) [note: 'Total exchange reserves']
   
-  // Whale Activity
-  whale_transactions_24h integer [note: 'Large transactions count']
-  whale_volume_24h decimal(30,8)
+  // Whale Activity (aligned with OnChainMetricsResponseDTO)
+  whale_transactions_24h integer [note: 'Large transaction count in last 24h']
+  whale_volume_24h decimal(30,8) [note: 'Whale transaction volume in last 24h']
   
-  // DeFi Metrics
-  tvl decimal(20,4) [note: 'Total Value Locked (USD)']
+  // DeFi Metrics (aligned with OnChainMetricsResponseDTO)
+  tvl decimal(20,4) [note: 'Total Value Locked in USD (optional)']
   tvl_change_24h decimal(10,4)
   
-  // Data Source
-  data_source varchar(50) [not null, note: 'etherscan, glassnode, dune']
-  
-  // Timestamps
+  // Data Source & Timestamps (aligned with OnChainMetricsResponseDTO)
+  data_source varchar(50) [not null, note: 'etherscan, glassnode, blockchain.com, solscan']
+  timestamp timestamptz [note: 'Metric timestamp']
   last_updated timestamptz
   fetched_at timestamptz [default: `now()`]
 
@@ -665,42 +669,42 @@ Table crypto_onchain_cache {
     fetched_at
   }
   
-  Note: 'On-chain analytics data for DATA-06 user story'
+  Note: 'On-chain analytics data aligned with OnChainMetricsResponseDTO'
 }
 
 Table company_profiles_cache {
   symbol varchar(20) [pk]
   
-  // Basic Info
-  name varchar(255)
+  // Basic Info (aligned with DTOs)
+  company_name varchar(255) [note: 'Aligned with DTOs']
+  name varchar(255) [note: 'Alias for company_name']
   asset_type asset_type [not null, note: 'stock, crypto']
   
   // Stock-specific
   exchange varchar(50)
   sector varchar(100)
   industry varchar(100)
-  
-  // Description
-  description text
-  
-  // Company Data (stocks)
   ceo varchar(255)
   employees integer
   headquarters varchar(255)
-  founded integer [note: 'Year']
+  founded integer [note: 'Year founded']
+  country varchar(100) [note: 'Company country']
+  currency varchar(3) [note: 'Trading currency']
+  ipo_date date [note: 'IPO date']
   
   // Crypto-specific
   categories text[] [note: 'Array of categories']
   platforms jsonb [note: 'Contract addresses per chain']
   
-  // Links
+  // Common
+  description text
   website varchar(500)
   logo_url varchar(500)
   
-  // Data Source
+  // Data Source & Timestamps
   data_source varchar(50) [not null]
-  
-  // Timestamps
+  created_at timestamptz [default: `now()`, note: 'First fetch time']
+  updated_at timestamptz [default: `now()`, note: 'Last update time']
   fetched_at timestamptz [default: `now()`]
 
   indexes {
@@ -715,31 +719,35 @@ Table company_profiles_cache {
 Table news_articles {
   id uuid [pk, default: `gen_random_uuid()`]
   
-  // Article Info
-  title varchar(500) [not null]
-  summary text
+  // Article Info (aligned with NewsResponseDTO)
+  headline varchar(500) [not null, note: 'Article headline']
+  title varchar(500) [not null, note: 'Alias for headline']
+  summary text [note: 'Article summary']
   content text [note: 'Full content if available']
   
-  // Source
-  source_name varchar(100) [not null, note: 'Reuters, Bloomberg, etc.']
+  // Source (aligned with NewsResponseDTO)
+  source varchar(100) [not null, note: 'Source name']
+  source_name varchar(100) [not null, note: 'Alias for source']
   source_url varchar(1000) [not null]
-  url varchar(1000) [not null, unique]
+  url varchar(1000) [not null, unique, note: 'Article URL']
   
-  // Media
-  image_url varchar(1000)
+  // Media (aligned with NewsResponseDTO)
+  image_url varchar(1000) [note: 'Article image URL']
   
-  // Classification
-  category varchar(50) [note: 'earnings, merger, general, etc.']
+  // Classification (aligned with NewsResponseDTO)
+  category varchar(50) [note: 'Article category']
   sentiment sentiment [note: 'positive, negative, neutral']
   sentiment_score decimal(5,4) [note: '-1.0 to 1.0']
   
-  // Timestamps
+  // Timestamps (aligned with NewsResponseDTO)
   published_at timestamptz [not null]
   fetched_at timestamptz [default: `now()`]
+  data_source varchar(50) [note: 'finnhub, cryptopanic, newsapi']
 
   indexes {
     published_at
     url
+    data_source
   }
 }
 
@@ -761,39 +769,52 @@ Table news_article_symbols {
 Table sec_filings {
   id uuid [pk, default: `gen_random_uuid()`]
   
-  // Company Identification
+  // Company Identification (aligned with SECFilingResponseDTO)
   cik varchar(20) [not null, note: 'SEC Central Index Key']
-  symbol varchar(20) [note: 'Ticker if mapped']
-  company_name varchar(255)
+  ticker varchar(20) [note: 'Stock ticker symbol']
+  symbol varchar(20) [note: 'Alias for ticker']
+  company_name varchar(255) [note: 'Company name']
   
-  // Filing Info
+  // Filing Info (aligned with SECFilingResponseDTO)
   form_type varchar(20) [not null, note: '10-K, 10-Q, 8-K, etc.']
-  filing_date date [not null]
-  accepted_date timestamptz
+  description text [note: 'Filing description']
+  filing_date date [not null, note: 'Date filed']
+  filed_at timestamptz [note: 'Filing timestamp']
+  accepted_date timestamptz [note: 'SEC acceptance date']
   report_date date [note: 'Period of report']
+  period_of_report date [note: 'Alias for report_date']
   
-  // Document References
-  accession_number varchar(30) [not null, unique]
+  // Document References (aligned with SECFilingResponseDTO)
+  accession_number varchar(30) [not null, unique, note: 'SEC accession number']
+  accession_no varchar(30) [note: 'Alias for accession_number']
   file_number varchar(30)
   
-  // URLs
-  filing_url varchar(500) [not null, note: 'SEC index page']
-  primary_document_url varchar(500) [note: 'Main document']
+  // URLs (aligned with SECFilingResponseDTO)
+  filing_url varchar(500) [not null, note: 'SEC index page URL']
+  link_to_filing_details varchar(500) [note: 'Link to filing details']
+  link_to_html varchar(500) [note: 'Link to HTML version']
+  link_to_xbrl varchar(500) [note: 'Link to XBRL file']
+  primary_document_url varchar(500) [note: 'Main document URL']
+  primary_document_name varchar(255)
   
   // Content
-  primary_document_name varchar(255)
   extracted_sections jsonb [note: 'Key sections extracted']
   
-  // Timestamps
+  // Data Source & Timestamps (aligned with SECFilingResponseDTO)
+  data_source varchar(50) [note: 'sec-edgar']
   fetched_at timestamptz [default: `now()`]
 
   indexes {
     symbol
+    ticker
     cik
     form_type
     filing_date
     accession_number [unique]
+    accession_no
   }
+  
+  Note: 'SEC filings aligned with SECFilingResponseDTO'
 }
 
 // =============================================================================

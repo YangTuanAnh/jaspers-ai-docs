@@ -1739,26 +1739,38 @@ CREATE TABLE crypto_quotes_cache (
     coinmarketcap_id        INTEGER,
     name                    VARCHAR(255),
     
+    -- Price Data (aligned with CryptoQuoteResponseDTO)
     price                   DECIMAL(30, 18) NOT NULL,
+    price_24h_ago           DECIMAL(30, 18), -- Price 24 hours ago for change calculation
     price_btc               DECIMAL(30, 18),
     price_eth               DECIMAL(30, 18),
     
+    -- Changes (aligned with CryptoQuoteResponseDTO)
+    change_24h              DECIMAL(20, 4), -- Absolute change in 24h
+    change_percent_24h      DECIMAL(10, 4), -- Percentage change in 24h
     change_1h               DECIMAL(10, 4),
-    change_24h              DECIMAL(10, 4),
     change_7d               DECIMAL(10, 4),
     change_30d              DECIMAL(10, 4),
     
+    -- Market Data
     market_cap              BIGINT,
     market_cap_rank         INTEGER,
     fully_diluted_valuation BIGINT,
     
-    volume_24h              BIGINT,
+    -- Volume (aligned with CryptoQuoteResponseDTO)
+    volume_24h              BIGINT, -- 24-hour trading volume
     volume_change_24h       DECIMAL(10, 4),
     
+    -- Price Range (aligned with CryptoQuoteResponseDTO)
+    high_24h                DECIMAL(30, 18), -- 24h high price
+    low_24h                 DECIMAL(30, 18), -- 24h low price
+    
+    -- Supply
     circulating_supply      DECIMAL(30, 8),
     total_supply            DECIMAL(30, 8),
     max_supply              DECIMAL(30, 8),
     
+    -- All-Time Data
     ath                     DECIMAL(30, 18),
     ath_date                TIMESTAMP WITH TIME ZONE,
     ath_change_percent      DECIMAL(10, 4),
@@ -1766,8 +1778,10 @@ CREATE TABLE crypto_quotes_cache (
     atl_date                TIMESTAMP WITH TIME ZONE,
     atl_change_percent      DECIMAL(10, 4),
     
+    -- Data Source & Timestamps (aligned with CryptoQuoteResponseDTO)
     data_source             VARCHAR(50) NOT NULL,
-    last_updated            TIMESTAMP WITH TIME ZONE,
+    quote_time              TIMESTAMP WITH TIME ZONE, -- When the quote was generated
+    last_updated            TIMESTAMP WITH TIME ZONE, -- Provider's last update
     fetched_at              TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -1785,40 +1799,41 @@ CREATE TABLE crypto_onchain_cache (
     chain                       VARCHAR(20) NOT NULL,
     contract_address            VARCHAR(255),
     
-    -- Activity Metrics
-    active_addresses_24h        BIGINT,
+    -- Activity Metrics (aligned with OnChainMetricsResponseDTO)
+    active_addresses_24h        BIGINT, -- Active addresses in last 24h
     active_addresses_7d         BIGINT,
-    transaction_count_24h       BIGINT,
-    transaction_volume_24h      DECIMAL(30, 8),
-    transaction_volume_usd_24h  DECIMAL(20, 4),
+    transaction_count_24h       BIGINT, -- Transaction count in last 24h
+    transaction_volume_24h      DECIMAL(30, 8), -- Transaction volume in native token
+    transaction_volume_usd_24h  DECIMAL(20, 4), -- Transaction volume in USD
     
     -- Network Metrics
-    avg_transaction_fee         DECIMAL(20, 8),
+    avg_transaction_fee         DECIMAL(20, 8), -- Average transaction fee in native token
     avg_transaction_fee_usd     DECIMAL(10, 4),
-    avg_block_time              DECIMAL(10, 2),
-    hashrate                    DECIMAL(30, 4),
+    avg_block_time              DECIMAL(10, 2), -- Average block time in seconds
+    hashrate                    DECIMAL(30, 4), -- Network hashrate (PoW chains)
     
-    -- Holder Distribution
+    -- Holder Distribution (aligned with OnChainMetricsResponseDTO)
     total_holders               BIGINT,
-    top_10_holders_percent      DECIMAL(6, 2),
+    top_10_holders_percent      DECIMAL(6, 2), -- Top 10 holders percentage
     top_100_holders_percent     DECIMAL(6, 2),
     
-    -- Exchange Flows
-    exchange_inflow_24h         DECIMAL(30, 8),
-    exchange_outflow_24h        DECIMAL(30, 8),
-    exchange_netflow_24h        DECIMAL(30, 8),
-    exchange_reserve            DECIMAL(30, 8),
+    -- Exchange Flows (aligned with OnChainMetricsResponseDTO)
+    exchange_inflow_24h         DECIMAL(30, 8), -- Exchange inflow in last 24h
+    exchange_outflow_24h        DECIMAL(30, 8), -- Exchange outflow in last 24h
+    exchange_netflow_24h        DECIMAL(30, 8), -- Net exchange flow (inflow - outflow)
+    exchange_reserve            DECIMAL(30, 8), -- Total exchange reserves
     
-    -- Whale Activity
-    whale_transactions_24h      INTEGER,
-    whale_volume_24h            DECIMAL(30, 8),
+    -- Whale Activity (aligned with OnChainMetricsResponseDTO)
+    whale_transactions_24h      INTEGER, -- Large transaction count in last 24h
+    whale_volume_24h            DECIMAL(30, 8), -- Whale transaction volume in last 24h
     
-    -- DeFi Metrics
-    tvl                         DECIMAL(20, 4),
+    -- DeFi Metrics (aligned with OnChainMetricsResponseDTO)
+    tvl                         DECIMAL(20, 4), -- Total Value Locked in USD (optional)
     tvl_change_24h              DECIMAL(10, 4),
     
-    -- Data Source
+    -- Data Source & Timestamps (aligned with OnChainMetricsResponseDTO)
     data_source                 VARCHAR(50) NOT NULL,
+    timestamp                   TIMESTAMP WITH TIME ZONE, -- Metric timestamp
     last_updated                TIMESTAMP WITH TIME ZONE,
     fetched_at                  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -1834,21 +1849,35 @@ CREATE INDEX idx_onchain_fetched ON crypto_onchain_cache(fetched_at);
 ```sql
 CREATE TABLE company_profiles_cache (
     symbol                  VARCHAR(20) PRIMARY KEY,
-    name                    VARCHAR(255),
+    company_name            VARCHAR(255) [note: 'Aligned with DTOs'],
+    name                    VARCHAR(255) [note: 'Alias for company_name'],
     asset_type              VARCHAR(20) NOT NULL,
+    
+    -- Stock-specific
     exchange                VARCHAR(50),
     sector                  VARCHAR(100),
     industry                VARCHAR(100),
-    description             TEXT,
     ceo                     VARCHAR(255),
     employees               INTEGER,
     headquarters            VARCHAR(255),
-    founded                 INTEGER,
-    categories              TEXT[],
-    platforms               JSONB,
+    founded                 INTEGER [note: 'Year founded'],
+    country                 VARCHAR(100) [note: 'Company country'],
+    currency                VARCHAR(3) [note: 'Trading currency'],
+    ipo_date                DATE [note: 'IPO date'],
+    
+    -- Crypto-specific
+    categories              TEXT[] [note: 'Array of categories'],
+    platforms               JSONB [note: 'Contract addresses per chain'],
+    
+    -- Common
+    description             TEXT,
     website                 VARCHAR(500),
     logo_url                VARCHAR(500),
+    
+    -- Data Source & Timestamps
     data_source             VARCHAR(50) NOT NULL,
+    created_at              TIMESTAMP WITH TIME ZONE DEFAULT NOW() [note: 'First fetch time'],
+    updated_at              TIMESTAMP WITH TIME ZONE DEFAULT NOW() [note: 'Last update time'],
     fetched_at              TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -1857,18 +1886,31 @@ CREATE INDEX idx_company_profiles_type ON company_profiles_cache(asset_type);
 
 CREATE TABLE news_articles (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    title                   VARCHAR(500) NOT NULL,
-    summary                 TEXT,
-    content                 TEXT,
-    source_name             VARCHAR(100) NOT NULL,
+    
+    -- Article Info (aligned with NewsResponseDTO)
+    headline                VARCHAR(500) NOT NULL [note: 'Article headline'],
+    title                   VARCHAR(500) NOT NULL [note: 'Alias for headline'],
+    summary                 TEXT [note: 'Article summary'],
+    content                 TEXT [note: 'Full content if available'],
+    
+    -- Source (aligned with NewsResponseDTO)
+    source                  VARCHAR(100) NOT NULL [note: 'Source name'],
+    source_name             VARCHAR(100) NOT NULL [note: 'Alias for source'],
     source_url              VARCHAR(1000) NOT NULL,
-    url                     VARCHAR(1000) NOT NULL UNIQUE,
-    image_url               VARCHAR(1000),
-    category                VARCHAR(50),
-    sentiment               VARCHAR(20),
-    sentiment_score         DECIMAL(5, 4),
+    url                     VARCHAR(1000) NOT NULL UNIQUE [note: 'Article URL'],
+    
+    -- Media (aligned with NewsResponseDTO)
+    image_url               VARCHAR(1000) [note: 'Article image URL'],
+    
+    -- Classification (aligned with NewsResponseDTO)
+    category                VARCHAR(50) [note: 'Article category'],
+    sentiment               VARCHAR(20) [note: 'positive, negative, neutral'],
+    sentiment_score         DECIMAL(5, 4) [note: '-1.0 to 1.0'],
+    
+    -- Timestamps (aligned with NewsResponseDTO)
     published_at            TIMESTAMP WITH TIME ZONE NOT NULL,
-    fetched_at              TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    fetched_at              TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    data_source             VARCHAR(50) [note: 'finnhub, cryptopanic, newsapi']
 );
 
 CREATE INDEX idx_news_articles_published ON news_articles(published_at DESC);
@@ -1888,19 +1930,40 @@ CREATE INDEX idx_news_symbols_symbol ON news_article_symbols(symbol, asset_type)
 
 CREATE TABLE sec_filings (
     id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    cik                     VARCHAR(20) NOT NULL,
-    symbol                  VARCHAR(20),
-    company_name            VARCHAR(255),
-    form_type               VARCHAR(20) NOT NULL,
-    filing_date             DATE NOT NULL,
-    accepted_date           TIMESTAMP WITH TIME ZONE,
-    report_date             DATE,
-    accession_number        VARCHAR(30) NOT NULL UNIQUE,
+    
+    -- Company Identification (aligned with SECFilingResponseDTO)
+    cik                     VARCHAR(20) NOT NULL [note: 'SEC Central Index Key'],
+    ticker                  VARCHAR(20) [note: 'Stock ticker symbol'],
+    symbol                  VARCHAR(20) [note: 'Alias for ticker'],
+    company_name            VARCHAR(255) [note: 'Company name'],
+    
+    -- Filing Info (aligned with SECFilingResponseDTO)
+    form_type               VARCHAR(20) NOT NULL [note: '10-K, 10-Q, 8-K, etc.'],
+    description             TEXT [note: 'Filing description'],
+    filing_date             DATE NOT NULL [note: 'Date filed'],
+    filed_at                TIMESTAMP WITH TIME ZONE [note: 'Filing timestamp'],
+    accepted_date           TIMESTAMP WITH TIME ZONE [note: 'SEC acceptance date'],
+    report_date             DATE [note: 'Period of report'],
+    period_of_report        DATE [note: 'Alias for report_date'],
+    
+    -- Document References (aligned with SECFilingResponseDTO)
+    accession_number        VARCHAR(30) NOT NULL UNIQUE [note: 'SEC accession number'],
+    accession_no            VARCHAR(30) [note: 'Alias for accession_number'],
     file_number             VARCHAR(30),
-    filing_url              VARCHAR(500) NOT NULL,
-    primary_document_url    VARCHAR(500),
+    
+    -- URLs (aligned with SECFilingResponseDTO)
+    filing_url              VARCHAR(500) NOT NULL [note: 'SEC index page URL'],
+    link_to_filing_details  VARCHAR(500) [note: 'Link to filing details'],
+    link_to_html            VARCHAR(500) [note: 'Link to HTML version'],
+    link_to_xbrl            VARCHAR(500) [note: 'Link to XBRL file'],
+    primary_document_url    VARCHAR(500) [note: 'Main document URL'],
     primary_document_name   VARCHAR(255),
-    extracted_sections      JSONB,
+    
+    -- Content
+    extracted_sections      JSONB [note: 'Key sections extracted'],
+    
+    -- Data Source & Timestamps (aligned with SECFilingResponseDTO)
+    data_source             VARCHAR(50) [note: 'sec-edgar'],
     fetched_at              TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
