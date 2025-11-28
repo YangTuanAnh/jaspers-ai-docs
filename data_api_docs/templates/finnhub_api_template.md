@@ -1451,33 +1451,336 @@ finnhubClient.covid19((error, data, response) => {
    - Stock candles can be adjusted for splits/dividends
    - Use `adjusted=true` for accurate historical analysis
 
+## Data Transfer Objects (DTOs)
+
+### Request DTOs
+
+```typescript
+// Stock Quote Request
+interface StockQuoteRequestDTO {
+  symbol: string;
+}
+
+// Stock Candles Request
+interface StockCandlesRequestDTO {
+  symbol: string;
+  resolution: '1' | '5' | '15' | '30' | '60' | 'D' | 'W' | 'M';
+  from: number; // Unix timestamp (seconds)
+  to: number; // Unix timestamp (seconds)
+  adjusted?: boolean; // Default: true
+}
+
+// Company Profile Request
+interface CompanyProfileRequestDTO {
+  symbol: string;
+}
+
+// Company News Request
+interface CompanyNewsRequestDTO {
+  symbol: string;
+  from: string; // YYYY-MM-DD
+  to: string; // YYYY-MM-DD
+}
+
+// Market News Request
+interface MarketNewsRequestDTO {
+  category: 'general' | 'forex' | 'crypto' | 'merger';
+  minId?: number; // Pagination
+}
+```
+
+### Response DTOs
+
+```typescript
+// Stock Quote Response
+interface StockQuoteResponseDTO {
+  c: number; // Current price
+  h: number; // High price of the day
+  l: number; // Low price of the day
+  o: number; // Open price of the day
+  pc: number; // Previous close price
+  t: number; // Unix timestamp (seconds)
+}
+
+// Stock Candles Response
+interface StockCandlesResponseDTO {
+  c: number[]; // Close prices
+  h: number[]; // High prices
+  l: number[]; // Low prices
+  o: number[]; // Open prices
+  s: string; // Status: 'ok' | 'no_data'
+  t: number[]; // Timestamps (Unix seconds)
+  v: number[]; // Volumes
+}
+
+// Company Profile Response
+interface CompanyProfileResponseDTO {
+  country: string;
+  currency: string;
+  exchange: string;
+  finnhubIndustry: string;
+  ipo: string;
+  logo: string;
+  marketCapitalization: number;
+  name: string;
+  phone: string;
+  shareOutstanding: number;
+  ticker: string;
+  weburl: string;
+}
+
+// News Response
+interface NewsResponseDTO {
+  category: string;
+  datetime: number; // Unix timestamp (seconds)
+  headline: string;
+  id: number;
+  image: string;
+  related: string; // Related symbols
+  source: string;
+  summary: string;
+  url: string;
+}
+```
+
 ## Scraping Implementation
 
 ```typescript
-// Example: Finnhub Stock Scraper
-class FinnhubScraper {
-  async fetchQuote(symbol: string) {
-    // Fetch real-time quote
-    // Map to stock_quotes_cache format
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { DefaultApi } from 'finnhub';
+import { RateLimiter } from 'limiter';
+import { RedisService } from '../redis/redis.service';
+import { PrismaService } from '../prisma/prisma.service';
+
+@Injectable()
+export class FinnhubScraperService {
+  private readonly logger = new Logger(FinnhubScraperService.name);
+  private finnhubClient: DefaultApi;
+  private rateLimiter: RateLimiter;
+
+  constructor(
+    private configService: ConfigService,
+    private redis: RedisService,
+    private prisma: PrismaService,
+  ) {
+    this.finnhubClient = new DefaultApi();
+    this.finnhubClient.setApiKey(
+      'token',
+      this.configService.get('FINNHUB_API_KEY'),
+    );
+
+    // Rate limiter: 60 requests per minute (free tier)
+    this.rateLimiter = new RateLimiter({
+      tokensPerInterval: 60,
+      interval: 'minute',
+    });
   }
-  
-  async fetchCandles(symbol: string, resolution: string, from: number, to: number) {
-    // Fetch historical OHLCV data
-    // Parse arrays into time series
+
+  /**
+   * Fetch real-time stock quote
+   */
+  async fetchQuote(
+    request: StockQuoteRequestDTO,
+  ): Promise<StockQuoteResponseDTO> {
+    await this.rateLimiter.removeTokens(1);
+
+    try {
+      const quote = await this.finnhubClient.quote(request.symbol);
+      
+      // Cache the quote
+      const cacheKey = `finnhub:quote:${request.symbol}`;
+      await this.redis.setex(cacheKey, 60, JSON.stringify(quote));
+
+      // Map to database entity
+      await this.mapQuoteToCache(request.symbol, quote);
+
+      return quote;
+    } catch (error) {
+      this.logger.error(`Error fetching quote for ${request.symbol}:`, error);
+      throw this.handleError(error);
+    }
   }
-  
-  async fetchCompanyProfile(symbol: string) {
-    // Fetch company information
-    // Map to company_profiles_cache
+
+  /**
+   * Fetch historical candles
+   */
+  async fetchCandles(
+    request: StockCandlesRequestDTO,
+  ): Promise<StockCandlesResponseDTO> {
+    await this.rateLimiter.removeTokens(1);
+
+    try {
+      const candles = await this.finnhubClient.stockCandles(
+        request.symbol,
+        request.resolution,
+        request.from,
+        request.to,
+        undefined,
+        request.adjusted !== false,
+      );
+
+      if (candles.s === 'no_data') {
+        throw new Error(`No data available for ${request.symbol}`);
+      }
+
+      // Cache candles
+      const cacheKey = `finnhub:candles:${request.symbol}:${request.resolution}:${request.from}:${request.to}`;
+      await this.redis.setex(cacheKey, 3600, JSON.stringify(candles));
+
+      return candles;
+    } catch (error) {
+      this.logger.error(`Error fetching candles for ${request.symbol}:`, error);
+      throw this.handleError(error);
+    }
   }
-  
-  async fetchNews(symbol: string, from: string, to: string) {
-    // Fetch company news
-    // Parse and deduplicate
+
+  /**
+   * Fetch company profile
+   */
+  async fetchCompanyProfile(
+    request: CompanyProfileRequestDTO,
+  ): Promise<CompanyProfileResponseDTO> {
+    await this.rateLimiter.removeTokens(1);
+
+    try {
+      const profile = await this.finnhubClient.companyProfile2({
+        symbol: request.symbol,
+      });
+
+      // Cache for 24 hours
+      const cacheKey = `finnhub:profile:${request.symbol}`;
+      await this.redis.setex(cacheKey, 86400, JSON.stringify(profile));
+
+      // Map to database
+      await this.mapProfileToCache(request.symbol, profile);
+
+      return profile;
+    } catch (error) {
+      this.logger.error(`Error fetching profile for ${request.symbol}:`, error);
+      throw this.handleError(error);
+    }
   }
-  
-  async fetchMarketNews(category: string) {
-    // Fetch general market news
+
+  /**
+   * Fetch company news
+   */
+  async fetchCompanyNews(
+    request: CompanyNewsRequestDTO,
+  ): Promise<NewsResponseDTO[]> {
+    await this.rateLimiter.removeTokens(1);
+
+    try {
+      const news = await this.finnhubClient.companyNews(
+        request.symbol,
+        request.from,
+        request.to,
+      );
+
+      // Cache for 5 minutes
+      const cacheKey = `finnhub:news:${request.symbol}:${request.from}:${request.to}`;
+      await this.redis.setex(cacheKey, 300, JSON.stringify(news));
+
+      return news;
+    } catch (error) {
+      this.logger.error(`Error fetching news for ${request.symbol}:`, error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Map quote to database cache
+   */
+  private async mapQuoteToCache(
+    symbol: string,
+    quote: StockQuoteResponseDTO,
+  ): Promise<void> {
+    await this.prisma.stockQuotesCache.upsert({
+      where: { symbol },
+      update: {
+        price: quote.c,
+        open: quote.o,
+        previous_close: quote.pc,
+        change: quote.c - quote.pc,
+        change_percent: ((quote.c - quote.pc) / quote.pc) * 100,
+        day_high: quote.h,
+        day_low: quote.l,
+        quote_time: new Date(quote.t * 1000),
+        data_source: 'finnhub',
+        fetched_at: new Date(),
+      },
+      create: {
+        symbol,
+        price: quote.c,
+        open: quote.o,
+        previous_close: quote.pc,
+        change: quote.c - quote.pc,
+        change_percent: ((quote.c - quote.pc) / quote.pc) * 100,
+        day_high: quote.h,
+        day_low: quote.l,
+        quote_time: new Date(quote.t * 1000),
+        data_source: 'finnhub',
+        fetched_at: new Date(),
+      },
+    });
+  }
+
+  /**
+   * Map profile to database cache
+   */
+  private async mapProfileToCache(
+    symbol: string,
+    profile: CompanyProfileResponseDTO,
+  ): Promise<void> {
+    await this.prisma.companyProfilesCache.upsert({
+      where: { symbol },
+      update: {
+        company_name: profile.name,
+        industry: profile.finnhubIndustry,
+        sector: profile.finnhubIndustry, // Map if available
+        market_cap: profile.marketCapitalization,
+        employees: null, // Not available in this endpoint
+        website: profile.weburl,
+        logo_url: profile.logo,
+        country: profile.country,
+        currency: profile.currency,
+        exchange: profile.exchange,
+        ipo_date: profile.ipo ? new Date(profile.ipo) : null,
+        data_source: 'finnhub',
+        updated_at: new Date(),
+      },
+      create: {
+        symbol,
+        company_name: profile.name,
+        industry: profile.finnhubIndustry,
+        sector: profile.finnhubIndustry,
+        market_cap: profile.marketCapitalization,
+        employees: null,
+        website: profile.weburl,
+        logo_url: profile.logo,
+        country: profile.country,
+        currency: profile.currency,
+        exchange: profile.exchange,
+        ipo_date: profile.ipo ? new Date(profile.ipo) : null,
+        data_source: 'finnhub',
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+    });
+  }
+
+  /**
+   * Error handling
+   */
+  private handleError(error: any): Error {
+    if (error.statusCode === 401) {
+      return new Error('Invalid Finnhub API key');
+    } else if (error.statusCode === 429) {
+      return new Error('Finnhub rate limit exceeded - 60 requests/minute');
+    } else if (error.statusCode === 400) {
+      return new Error(`Invalid request: ${error.message}`);
+    }
+    return new Error(`Finnhub API error: ${error.message}`);
   }
 }
 ```

@@ -849,6 +849,380 @@ scraperConfig = {
 }
 ```
 
+### 5.4 Data Transfer Objects (DTOs)
+
+The data scraping layer uses standardized DTOs for request/response handling across all providers. These DTOs ensure type safety, consistency, and easier integration with the rest of the system.
+
+#### 5.4.1 Stock Market Data DTOs
+
+```typescript
+// Stock Quote Request
+interface StockQuoteRequestDTO {
+  symbol: string;
+  provider?: 'yahoo_finance' | 'finnhub' | 'alpaca' | 'polygon';
+}
+
+// Stock Quote Response
+interface StockQuoteResponseDTO {
+  symbol: string;
+  price: number;
+  open: number;
+  previous_close: number;
+  change: number;
+  change_percent: number;
+  day_high: number;
+  day_low: number;
+  volume: number;
+  quote_time: Date;
+  data_source: string;
+  fetched_at: Date;
+}
+
+// Stock Candles Request
+interface StockCandlesRequestDTO {
+  symbol: string;
+  resolution: '1' | '5' | '15' | '30' | '60' | 'D' | 'W' | 'M';
+  from: number; // Unix timestamp (seconds)
+  to: number; // Unix timestamp (seconds)
+  provider?: 'yahoo_finance' | 'finnhub' | 'alpaca';
+}
+
+// Stock Candles Response
+interface StockCandlesResponseDTO {
+  symbol: string;
+  candles: Array<{
+    timestamp: Date;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+  }>;
+  data_source: string;
+}
+```
+
+#### 5.4.2 Cryptocurrency Data DTOs
+
+```typescript
+// Crypto Quote Request
+interface CryptoQuoteRequestDTO {
+  symbol: string; // e.g., "BTC", "ETH"
+  provider?: 'coingecko' | 'binance' | 'coinbase' | 'coinmarketcap';
+}
+
+// Crypto Quote Response
+interface CryptoQuoteResponseDTO {
+  symbol: string;
+  price: number;
+  price_24h_ago: number;
+  change_24h: number;
+  change_percent_24h: number;
+  volume_24h: number;
+  market_cap: number;
+  high_24h: number;
+  low_24h: number;
+  quote_time: Date;
+  data_source: string;
+  fetched_at: Date;
+}
+
+// Crypto Candles Request
+interface CryptoCandlesRequestDTO {
+  symbol: string;
+  timeframe: '1m' | '5m' | '15m' | '1h' | '4h' | '1d';
+  start: string; // ISO date string
+  end: string; // ISO date string
+  provider?: 'coingecko' | 'binance' | 'coinbase';
+}
+
+// Crypto Candles Response
+interface CryptoCandlesResponseDTO {
+  symbol: string;
+  candles: Array<{
+    timestamp: Date;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+  }>;
+  data_source: string;
+}
+```
+
+#### 5.4.3 On-Chain Metrics DTOs
+
+```typescript
+// On-Chain Metrics Request
+interface OnChainMetricsRequestDTO {
+  symbol: string;
+  chain: 'ethereum' | 'bitcoin' | 'solana';
+  provider?: 'etherscan' | 'glassnode' | 'blockchain.com' | 'solscan';
+}
+
+// On-Chain Metrics Response
+interface OnChainMetricsResponseDTO {
+  symbol: string;
+  chain: string;
+  active_addresses_24h: number;
+  transaction_count_24h: number;
+  transaction_volume_24h: number;
+  avg_transaction_fee: number;
+  total_holders: number;
+  top_10_holders_percent: number;
+  exchange_inflow_24h: number;
+  exchange_outflow_24h: number;
+  exchange_netflow_24h: number;
+  whale_transactions_24h: number;
+  tvl?: number; // Total Value Locked (for DeFi tokens)
+  data_source: string;
+  timestamp: Date;
+}
+```
+
+#### 5.4.4 News Data DTOs
+
+```typescript
+// News Request
+interface NewsRequestDTO {
+  symbol?: string; // Optional - for company-specific news
+  category?: 'general' | 'forex' | 'crypto' | 'merger';
+  from?: string; // ISO date string
+  to?: string; // ISO date string
+  limit?: number;
+  provider?: 'finnhub' | 'cryptopanic' | 'newsapi';
+}
+
+// News Response
+interface NewsResponseDTO {
+  articles: Array<{
+    id: string;
+    headline: string;
+    summary: string;
+    source: string;
+    url: string;
+    image_url?: string;
+    published_at: Date;
+    related_symbols?: string[];
+    sentiment?: 'positive' | 'negative' | 'neutral';
+  }>;
+  total: number;
+  data_source: string;
+  fetched_at: Date;
+}
+```
+
+#### 5.4.5 SEC Filings DTOs
+
+```typescript
+// SEC Filing Search Request
+interface SECFilingSearchRequestDTO {
+  ticker?: string;
+  form_type?: '10-K' | '10-Q' | '8-K' | '13-F' | '13-D' | '4' | '3' | '5';
+  start_date?: string; // YYYY-MM-DD
+  end_date?: string; // YYYY-MM-DD
+  query?: string; // Full-text search query
+  from?: number; // Pagination offset
+  size?: number; // Results per page
+}
+
+// SEC Filing Response
+interface SECFilingResponseDTO {
+  accession_no: string;
+  cik: string;
+  ticker: string;
+  company_name: string;
+  form_type: string;
+  description: string;
+  filed_at: Date;
+  period_of_report?: Date;
+  link_to_filing_details: string;
+  link_to_html: string;
+  link_to_xbrl?: string;
+  data_source: string;
+}
+
+// Financial Statement Request
+interface FinancialStatementRequestDTO {
+  accession_no: string;
+  statement_type: 'income' | 'balance' | 'cashflow';
+}
+
+// Financial Statement Response
+interface FinancialStatementResponseDTO {
+  accession_no: string;
+  statement_type: string;
+  period: {
+    start_date?: Date;
+    end_date?: Date;
+    instant?: Date;
+  };
+  metrics: Record<string, {
+    value: number;
+    unit: string;
+    context: string;
+  }>;
+  data_source: string;
+}
+```
+
+#### 5.4.6 Portfolio Sync DTOs
+
+```typescript
+// Portfolio Sync Request
+interface PortfolioSyncRequestDTO {
+  connection_id: string;
+  provider: 'alpaca' | 'binance' | 'coinbase' | 'interactive_brokers';
+  force_refresh?: boolean;
+}
+
+// Portfolio Sync Response
+interface PortfolioSyncResponseDTO {
+  connection_id: string;
+  holdings: Array<{
+    symbol: string;
+    asset_type: 'stock' | 'crypto' | 'option' | 'bond' | 'other';
+    quantity: number;
+    cost_basis: number;
+    current_price: number;
+    market_value: number;
+    unrealized_pl: number;
+    unrealized_pl_percent: number;
+  }>;
+  total_value: number;
+  cash_balance: number;
+  buying_power?: number;
+  synced_at: Date;
+  data_source: string;
+}
+```
+
+#### 5.4.7 Error DTOs
+
+```typescript
+// API Error Response
+interface APIErrorResponseDTO {
+  error_code: string;
+  error_message: string;
+  provider: string;
+  timestamp: Date;
+  retry_after?: number; // Seconds to wait before retry
+  details?: Record<string, any>;
+}
+
+// Rate Limit Error
+interface RateLimitErrorDTO extends APIErrorResponseDTO {
+  error_code: 'RATE_LIMIT_EXCEEDED';
+  retry_after: number;
+  limit: number;
+  window: string; // e.g., "per minute", "per second"
+}
+
+// Authentication Error
+interface AuthErrorDTO extends APIErrorResponseDTO {
+  error_code: 'AUTHENTICATION_FAILED' | 'INVALID_API_KEY' | 'TOKEN_EXPIRED';
+}
+
+// Data Not Found Error
+interface NotFoundErrorDTO extends APIErrorResponseDTO {
+  error_code: 'NOT_FOUND' | 'SYMBOL_NOT_FOUND' | 'FILING_NOT_FOUND';
+  resource: string;
+}
+```
+
+#### 5.4.8 Scraper Job DTOs
+
+```typescript
+// Scraper Job Request
+interface ScraperJobRequestDTO {
+  job_type: 'stock_quotes' | 'crypto_quotes' | 'news' | 'filings' | 'portfolio_sync' | 'onchain_metrics';
+  symbols?: string[];
+  connection_id?: string; // For portfolio sync
+  priority?: 'high' | 'medium' | 'low';
+  retry_count?: number;
+  metadata?: Record<string, any>;
+}
+
+// Scraper Job Response
+interface ScraperJobResponseDTO {
+  job_id: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  created_at: Date;
+  started_at?: Date;
+  completed_at?: Date;
+  result?: any;
+  error?: APIErrorResponseDTO;
+}
+
+// Batch Scrape Request
+interface BatchScrapeRequestDTO {
+  jobs: ScraperJobRequestDTO[];
+  batch_id?: string;
+  max_concurrency?: number;
+}
+
+// Batch Scrape Response
+interface BatchScrapeResponseDTO {
+  batch_id: string;
+  total_jobs: number;
+  completed_jobs: number;
+  failed_jobs: number;
+  jobs: ScraperJobResponseDTO[];
+  started_at: Date;
+  completed_at?: Date;
+}
+```
+
+#### 5.4.9 DTO Usage in Scrapers
+
+All scraper services implement a consistent interface using these DTOs:
+
+```typescript
+// Base Scraper Interface
+interface IScraperService {
+  fetchQuote(request: StockQuoteRequestDTO | CryptoQuoteRequestDTO): Promise<StockQuoteResponseDTO | CryptoQuoteResponseDTO>;
+  fetchCandles(request: StockCandlesRequestDTO | CryptoCandlesRequestDTO): Promise<StockCandlesResponseDTO | CryptoCandlesResponseDTO>;
+  handleError(error: any): APIErrorResponseDTO;
+}
+
+// Example Implementation
+class FinnhubScraperService implements IScraperService {
+  async fetchQuote(request: StockQuoteRequestDTO): Promise<StockQuoteResponseDTO> {
+    // Implementation with DTOs
+    const response = await this.finnhubClient.quote(request.symbol);
+    
+    return {
+      symbol: request.symbol,
+      price: response.c,
+      open: response.o,
+      previous_close: response.pc,
+      change: response.c - response.pc,
+      change_percent: ((response.c - response.pc) / response.pc) * 100,
+      day_high: response.h,
+      day_low: response.l,
+      volume: 0, // Not available in quote endpoint
+      quote_time: new Date(response.t * 1000),
+      data_source: 'finnhub',
+      fetched_at: new Date(),
+    };
+  }
+  
+  handleError(error: any): APIErrorResponseDTO {
+    if (error.statusCode === 429) {
+      return {
+        error_code: 'RATE_LIMIT_EXCEEDED',
+        error_message: 'Finnhub rate limit exceeded',
+        provider: 'finnhub',
+        timestamp: new Date(),
+        retry_after: 60,
+      };
+    }
+    // ... other error handling
+  }
+}
+```
+
 ---
 
 ## 6. Database Schema

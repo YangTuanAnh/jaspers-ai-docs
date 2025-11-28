@@ -475,31 +475,420 @@ alpaca
    - Monitor rate limit headers if provided
    - Use job queue with concurrency limits
 
+## Data Transfer Objects (DTOs)
+
+### Request DTOs
+
+```typescript
+// Stock Bars Request
+interface StockBarsRequestDTO {
+  symbol: string;
+  timeframe: '1Min' | '5Min' | '15Min' | '30Min' | '1Hour' | '1Day';
+  start?: string; // YYYY-MM-DD
+  end?: string; // YYYY-MM-DD
+  limit?: number; // Default: 100
+  feed?: 'iex' | 'sip';
+  asof?: string; // Historical date for symbol lookup
+}
+
+// Crypto Bars Request
+interface CryptoBarsRequestDTO {
+  symbol: string; // e.g., "BTC/USD"
+  start?: string; // YYYY-MM-DD
+  end?: string; // YYYY-MM-DD
+  timeframe?: '1Min' | '5Min' | '15Min' | '30Min' | '1Hour' | '1Day';
+}
+
+// Latest Trade Request
+interface LatestTradeRequestDTO {
+  symbol: string;
+}
+
+// Account Info Request
+interface AccountInfoRequestDTO {
+  // No parameters - uses authenticated account
+}
+
+// Positions Request
+interface PositionsRequestDTO {
+  symbol?: string; // Optional - filter by symbol
+}
+
+// Assets Request
+interface AssetsRequestDTO {
+  status?: 'active' | 'inactive';
+  asset_class?: 'us_equity' | 'crypto' | 'option';
+  exchange?: string;
+}
+```
+
+### Response DTOs
+
+```typescript
+// Stock Bars Response
+interface StockBarsResponseDTO {
+  bars: Array<{
+    t: string; // Timestamp (ISO 8601)
+    o: number; // Open
+    h: number; // High
+    l: number; // Low
+    c: number; // Close
+    v: number; // Volume
+    n: number; // Trade count
+    vw: number; // VWAP
+  }>;
+  symbol: string;
+  next_page_token?: string;
+}
+
+// Crypto Bars Response
+interface CryptoBarsResponseDTO {
+  [symbol: string]: Array<{
+    t: number; // Timestamp (milliseconds)
+    o: number;
+    h: number;
+    l: number;
+    c: number;
+    v: number;
+    n: number;
+    vw: number;
+  }>;
+}
+
+// Latest Trade Response
+interface LatestTradeResponseDTO {
+  trades: {
+    [symbol: string]: {
+      t: string; // Timestamp
+      x: string; // Exchange
+      p: number; // Price
+      s: number; // Size
+      c: string[]; // Conditions
+      i: number; // Trade ID
+      z: string; // Tape
+    };
+  };
+}
+
+// Account Response
+interface AccountResponseDTO {
+  id: string;
+  account_number: string;
+  status: 'ACTIVE' | 'INACTIVE' | 'CLOSED';
+  currency: string;
+  buying_power: string;
+  cash: string;
+  portfolio_value: string;
+  pattern_day_trader: boolean;
+  trading_blocked: boolean;
+  transfers_blocked: boolean;
+  account_blocked: boolean;
+  created_at: string;
+  trade_suspended_by_user: boolean;
+  multiplier: string;
+  equity: string;
+  last_equity: string;
+  long_market_value: string;
+  short_market_value: string;
+}
+
+// Position Response
+interface PositionResponseDTO {
+  symbol: string;
+  qty: string;
+  side: 'long' | 'short';
+  market_value: string;
+  cost_basis: string;
+  unrealized_pl: string;
+  unrealized_plpc: string;
+  current_price: string;
+  asset_class: 'us_equity' | 'option' | 'crypto';
+}
+
+// Asset Response
+interface AssetResponseDTO {
+  id: string;
+  class: string;
+  exchange: string;
+  symbol: string;
+  name: string;
+  status: string;
+  tradable: boolean;
+  marginable: boolean;
+  shortable: boolean;
+  easy_to_borrow: boolean;
+}
+```
+
 ## Scraping Implementation
 
 ```typescript
-// Example: Stock Quote Scraper
-class AlpacaStockScraper {
-  async fetchStockBars(symbol: string, timeframe: string, start?: string, end?: string) {
-    // Implementation with rate limiting and error handling
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Alpaca } from '@alpacahq/alpaca-trade-api';
+import { RateLimiter } from 'limiter';
+import { RedisService } from '../redis/redis.service';
+import { PrismaService } from '../prisma/prisma.service';
+
+@Injectable()
+export class AlpacaScraperService {
+  private readonly logger = new Logger(AlpacaScraperService.name);
+  private alpaca: Alpaca;
+  private rateLimiter: RateLimiter;
+
+  constructor(
+    private configService: ConfigService,
+    private redis: RedisService,
+    private prisma: PrismaService,
+  ) {
+    this.alpaca = new Alpaca({
+      keyId: this.configService.get('ALPACA_API_KEY'),
+      secretKey: this.configService.get('ALPACA_API_SECRET'),
+      paper: this.configService.get('ALPACA_PAPER', true),
+    });
+
+    // Rate limiter: 200 requests per minute
+    this.rateLimiter = new RateLimiter({
+      tokensPerInterval: 200,
+      interval: 'minute',
+    });
   }
-  
-  async fetchLatestTrade(symbol: string) {
-    // Implementation for real-time quotes
+
+  /**
+   * Fetch stock bars with rate limiting and error handling
+   */
+  async fetchStockBars(
+    request: StockBarsRequestDTO,
+  ): Promise<StockBarsResponseDTO> {
+    await this.rateLimiter.removeTokens(1);
+
+    try {
+      const params: any = {
+        timeframe: request.timeframe,
+        limit: request.limit || 100,
+      };
+
+      if (request.start) params.start = request.start;
+      if (request.end) params.end = request.end;
+      if (request.feed) params.feed = request.feed;
+      if (request.asof) params.asof = request.asof;
+
+      const bars = await this.alpaca.getBars(
+        request.timeframe,
+        request.symbol,
+        params,
+      );
+
+      return {
+        bars: bars[request.symbol].map((bar) => ({
+          t: bar.t.toISOString(),
+          o: bar.o,
+          h: bar.h,
+          l: bar.l,
+          c: bar.c,
+          v: bar.v,
+          n: bar.n,
+          vw: bar.vw,
+        })),
+        symbol: request.symbol,
+      };
+    } catch (error) {
+      this.logger.error(`Error fetching stock bars for ${request.symbol}:`, error);
+      throw this.handleError(error);
+    }
   }
-  
-  async fetchAccountInfo() {
-    // For portfolio sync
+
+  /**
+   * Fetch crypto bars
+   */
+  async fetchCryptoBars(
+    request: CryptoBarsRequestDTO,
+  ): Promise<CryptoBarsResponseDTO> {
+    await this.rateLimiter.removeTokens(1);
+
+    try {
+      const options: any = {};
+      if (request.start) options.start = request.start;
+      if (request.end) options.end = request.end;
+      if (request.timeframe) options.timeframe = request.timeframe;
+
+      const bars = await this.alpaca.getCryptoBars([request.symbol], options);
+      return bars;
+    } catch (error) {
+      this.logger.error(`Error fetching crypto bars for ${request.symbol}:`, error);
+      throw this.handleError(error);
+    }
   }
-  
-  async fetchPositions() {
-    // For portfolio sync
+
+  /**
+   * Fetch latest trade for real-time quotes
+   */
+  async fetchLatestTrade(
+    request: LatestTradeRequestDTO,
+  ): Promise<LatestTradeResponseDTO> {
+    await this.rateLimiter.removeTokens(1);
+
+    try {
+      const trade = await this.alpaca.getLatestTrade(request.symbol);
+      return {
+        trades: {
+          [request.symbol]: {
+            t: trade.t.toISOString(),
+            x: trade.x,
+            p: trade.p,
+            s: trade.s,
+            c: trade.c || [],
+            i: trade.i,
+            z: trade.z,
+          },
+        },
+      };
+    } catch (error) {
+      this.logger.error(`Error fetching latest trade for ${request.symbol}:`, error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Fetch account information for portfolio sync
+   */
+  async fetchAccountInfo(): Promise<AccountResponseDTO> {
+    await this.rateLimiter.removeTokens(1);
+
+    try {
+      const account = await this.alpaca.getAccount();
+      return {
+        id: account.id,
+        account_number: account.account_number,
+        status: account.status as any,
+        currency: account.currency,
+        buying_power: account.buying_power,
+        cash: account.cash,
+        portfolio_value: account.portfolio_value,
+        pattern_day_trader: account.pattern_day_trader,
+        trading_blocked: account.trading_blocked,
+        transfers_blocked: account.transfers_blocked,
+        account_blocked: account.account_blocked,
+        created_at: account.created_at.toISOString(),
+        trade_suspended_by_user: account.trade_suspended_by_user,
+        multiplier: account.multiplier,
+        equity: account.equity,
+        last_equity: account.last_equity,
+        long_market_value: account.long_market_value,
+        short_market_value: account.short_market_value,
+      };
+    } catch (error) {
+      this.logger.error('Error fetching account info:', error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Fetch positions for portfolio sync
+   */
+  async fetchPositions(
+    request?: PositionsRequestDTO,
+  ): Promise<PositionResponseDTO[]> {
+    await this.rateLimiter.removeTokens(1);
+
+    try {
+      let positions;
+      if (request?.symbol) {
+        const position = await this.alpaca.getPosition(request.symbol);
+        positions = [position];
+      } else {
+        positions = await this.alpaca.getPositions();
+      }
+
+      return positions.map((pos) => ({
+        symbol: pos.symbol,
+        qty: pos.qty,
+        side: pos.side as 'long' | 'short',
+        market_value: pos.market_value,
+        cost_basis: pos.cost_basis,
+        unrealized_pl: pos.unrealized_pl,
+        unrealized_plpc: pos.unrealized_plpc,
+        current_price: pos.current_price,
+        asset_class: pos.asset_class as any,
+      }));
+    } catch (error) {
+      this.logger.error('Error fetching positions:', error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Map stock bars to database entity
+   */
+  async mapStockBarsToCache(
+    symbol: string,
+    bars: StockBarsResponseDTO['bars'],
+  ): Promise<void> {
+    const latestBar = bars[bars.length - 1];
+    const cacheKey = `alpaca:stock:${symbol}:bars:${latestBar.t}`;
+
+    // Cache for 60 seconds
+    await this.redis.setex(
+      cacheKey,
+      60,
+      JSON.stringify(latestBar),
+    );
+
+    // Upsert to database
+    await this.prisma.stockQuotesCache.upsert({
+      where: { symbol },
+      update: {
+        price: latestBar.c,
+        open: latestBar.o,
+        day_high: latestBar.h,
+        day_low: latestBar.l,
+        volume: latestBar.v,
+        quote_time: new Date(latestBar.t),
+        data_source: 'alpaca',
+        fetched_at: new Date(),
+      },
+      create: {
+        symbol,
+        price: latestBar.c,
+        open: latestBar.o,
+        day_high: latestBar.h,
+        day_low: latestBar.l,
+        volume: latestBar.v,
+        quote_time: new Date(latestBar.t),
+        data_source: 'alpaca',
+        fetched_at: new Date(),
+      },
+    });
+  }
+
+  /**
+   * Error handling with retry logic
+   */
+  private handleError(error: any): Error {
+    if (error.statusCode === 403) {
+      return new Error('Invalid Alpaca API credentials');
+    } else if (error.statusCode === 422) {
+      return new Error(`Invalid request parameters: ${error.message}`);
+    } else if (error.statusCode === 429) {
+      return new Error('Rate limit exceeded - implement exponential backoff');
+    } else if (error.statusCode === 500) {
+      return new Error('Alpaca server error - retry later');
+    }
+    return new Error(`Alpaca API error: ${error.message}`);
   }
 }
 ```
 
 ## Cache Strategy
-- **TTL:** 60 seconds for quotes
-- **Key Format:** `alpaca:stock:{symbol}:bars:{timeframe}`
-- **Invalidation:** On new data fetch
+- **TTL:** 
+  - Stock quotes: 60 seconds
+  - Crypto quotes: 60 seconds
+  - Account info: 300 seconds (5 minutes)
+  - Positions: 60 seconds
+- **Key Format:** 
+  - `alpaca:stock:{symbol}:bars:{timeframe}`
+  - `alpaca:crypto:{symbol}:bars:{timeframe}`
+  - `alpaca:account:{account_id}`
+  - `alpaca:positions:{user_id}`
+- **Invalidation:** On new data fetch or manual cache clear
 
