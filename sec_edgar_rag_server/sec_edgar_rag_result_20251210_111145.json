@@ -1,0 +1,263 @@
+{
+  "question": "What are the main business risks?",
+  "company_ticker": "AAPL",
+  "company_name": null,
+  "filing_type": "10-K",
+  "answer": "The main business risks that companies face can be categorized into several key areas, including regulatory, financial, operational, and reputational risks. Here\u2019s a detailed overview:\n\n1. **Regulatory Risks**: Companies are often subject to changing laws and regulations that can significantly impact their operations. This includes compliance with export and import regulations, online safety laws, and evolving data protection requirements. Non-compliance can lead to operational disruptions, increased costs, and potential legal liabilities, which can adversely affect the company's reputation and financial condition [Document 1][Document 4][Document 20].\n\n2. **Financial Risks**: Companies face various financial risks, including volatility in net sales and gross margins, fluctuations in interest rates, and foreign exchange rates. These factors can affect the company's investment portfolio and increase the cost of debt, thereby impacting overall financial performance [Document 3][Document 6][Document 5].\n\n3. **Operational Risks**: The ability to maintain a reliable supply chain is critical. Companies may encounter risks related to supply shortages, price increases, and the need for significant modifications to operations in response to new regulations. Such challenges can disrupt manufacturing and shipping processes, leading to adverse effects on business performance [Document 12][Document 14].\n\n4. **Legal and Compliance Risks**: Companies are often involved in legal proceedings and government investigations, which can result in significant costs and operational disruptions. The outcomes of these legal matters are uncertain and can lead to substantial financial liabilities, changes in business practices, and reputational damage [Document 7][Document 18][Document 19].\n\n5. **Reputational Risks**: Stakeholder expectations regarding social and environmental issues can expose companies to reputational harm. Companies must navigate these expectations while managing their public image, which can be affected by their responses to regulatory changes, litigation, and other operational challenges [Document 1][Document 15].\n\n6. **Market and Competitive Risks**: Companies must continuously innovate and adapt to remain competitive. Failure to effectively manage product introductions and transitions can lead to a loss of market share and diminished customer demand [Document 9].\n\nIn summary, businesses face a complex landscape of risks that can impact their operations, financial health, and reputation. Effective risk management strategies are essential to mitigate these challenges and ensure long-term success.\n\n### Sources\n1. Document 1\n2. Document 3\n3. Document 4\n4. Document 5\n5. Document 6\n6. Document 7\n7. Document 9\n8. Document 12\n9. Document 14\n10. Document 15\n11. Document 18\n12. Document 19",
+  "citations": [
+    1,
+    4,
+    20,
+    3,
+    6,
+    5,
+    12,
+    14,
+    7,
+    18,
+    19,
+    1,
+    15,
+    9
+  ],
+  "sources": [
+    {
+      "document_id": 1,
+      "metadata": {
+        "ticker": "AAPL",
+        "filing_type": "10-K",
+        "source": "ITEM 1A - Risk Factors - pages(7, 19)"
+      },
+      "relevance_score": 1.0,
+      "reasoning": "The document directly addresses business risks related to regulatory changes and stakeholder expectations, which are key components of the main business risks."
+    },
+    {
+      "document_id": 2,
+      "metadata": {
+        "source": "ITEM 1A - Risk Factors - pages(7, 19)",
+        "filing_type": "10-K",
+        "ticker": "AAPL"
+      },
+      "relevance_score": 0.5,
+      "reasoning": "The document discusses risk factors that could adversely affect a company's business, which relates to the question about main business risks. However, it does not provide specific examples or a comprehensive list of these risks."
+    },
+    {
+      "document_id": 3,
+      "metadata": {
+        "source": "ITEM 1A - Risk Factors - pages(7, 19)",
+        "ticker": "AAPL",
+        "filing_type": "10-K"
+      },
+      "relevance_score": 0.5,
+      "reasoning": "The document discusses specific risks related to tax examinations and stock price volatility, which are aspects of business risks. However, it does not provide a comprehensive overview of the main business risks."
+    },
+    {
+      "document_id": 4,
+      "metadata": {
+        "filing_type": "10-K",
+        "ticker": "AAPL",
+        "source": "ITEM 1A - Risk Factors - pages(7, 19)"
+      },
+      "relevance_score": 0.5,
+      "reasoning": "The document discusses regulatory and financial risks that can impact a company's business, which are relevant to the broader category of business risks. However, it does not provide a comprehensive overview of all main business risks."
+    },
+    {
+      "document_id": 5,
+      "metadata": {
+        "source": "ITEM 1A - Risk Factors - pages(7, 19)",
+        "filing_type": "10-K",
+        "ticker": "AAPL"
+      },
+      "relevance_score": 0.5,
+      "reasoning": "The document discusses macroeconomic and industry risks that can affect a company's performance, which relates to business risks, but it does not provide a comprehensive overview of the main business risks."
+    },
+    {
+      "document_id": 6,
+      "metadata": {
+        "ticker": "AAPL",
+        "source": "ITEM 7A - Quantitative and Qualitative Disclosures About Market Risk - pages(29, 29)",
+        "filing_type": "10-K"
+      },
+      "relevance_score": 0.5,
+      "reasoning": "The document discusses specific business risks related to interest rates and foreign exchange rates, which are part of the broader category of business risks. However, it does not provide a comprehensive overview of all main business risks."
+    },
+    {
+      "document_id": 7,
+      "metadata": {
+        "filing_type": "10-K",
+        "source": "ITEM 1A - Risk Factors - pages(7, 19)",
+        "ticker": "AAPL"
+      },
+      "relevance_score": 0.5,
+      "reasoning": "The document discusses legal and regulatory compliance risks, which are a type of business risk, but it does not provide a comprehensive overview of all main business risks."
+    },
+    {
+      "document_id": 8,
+      "metadata": {
+        "source": "ITEM 1A - Risk Factors - pages(7, 19)",
+        "ticker": "AAPL",
+        "filing_type": "10-K"
+      },
+      "relevance_score": 0.5,
+      "reasoning": "The document discusses risks related to laws and regulations, which are a part of business risks, but it does not provide a comprehensive overview of all main business risks."
+    },
+    {
+      "document_id": 9,
+      "metadata": {
+        "filing_type": "10-K",
+        "source": "ITEM 1A - Risk Factors - pages(7, 19)",
+        "ticker": "AAPL"
+      },
+      "relevance_score": 0.5,
+      "reasoning": "The document discusses competition and its impact on business, which relates to business risks, but it does not provide a comprehensive overview of the main business risks."
+    },
+    {
+      "document_id": 10,
+      "metadata": {
+        "ticker": "AAPL",
+        "filing_type": "10-K",
+        "source": "ITEM 1A - Risk Factors - pages(7, 19)"
+      },
+      "relevance_score": 0.5,
+      "reasoning": "The document discusses specific legal risks related to patent claims and intellectual property, which are a subset of business risks. However, it does not provide a comprehensive overview of all main business risks."
+    },
+    {
+      "document_id": 11,
+      "metadata": {
+        "source": "ITEM 1A - Risk Factors - pages(7, 19)",
+        "ticker": "AAPL",
+        "filing_type": "10-K"
+      },
+      "relevance_score": 0.5,
+      "reasoning": "The document discusses regulatory scrutiny and legal actions as business risks, which is relevant to the question about main business risks. However, it does not provide a comprehensive overview of all main business risks."
+    },
+    {
+      "document_id": 12,
+      "metadata": {
+        "ticker": "AAPL",
+        "source": "ITEM 1A - Risk Factors - pages(7, 19)",
+        "filing_type": "10-K"
+      },
+      "relevance_score": 0.5,
+      "reasoning": "The document discusses risks related to the supply chain, which is a specific type of business risk, but it does not provide a comprehensive overview of all main business risks."
+    },
+    {
+      "document_id": 13,
+      "metadata": {
+        "filing_type": "10-K",
+        "source": "ITEM 1A - Risk Factors - pages(7, 19)",
+        "ticker": "AAPL"
+      },
+      "relevance_score": 0.5,
+      "reasoning": "The document mentions risks related to customer transactions and manufacturing/shipping, which are aspects of business risks, but it does not provide a comprehensive overview of the main business risks."
+    },
+    {
+      "document_id": 14,
+      "metadata": {
+        "source": "ITEM 1A - Risk Factors - pages(7, 19)",
+        "ticker": "AAPL",
+        "filing_type": "10-K"
+      },
+      "relevance_score": 0.5,
+      "reasoning": "The document discusses supply shortages and price increases as risks that can affect the company's business, which relates to business risks but does not provide a comprehensive overview of all main business risks."
+    },
+    {
+      "document_id": 15,
+      "metadata": {
+        "source": "ITEM 1A - Risk Factors - pages(7, 19)",
+        "filing_type": "10-K",
+        "ticker": "AAPL"
+      },
+      "relevance_score": 0.5,
+      "reasoning": "The document discusses various risks and uncertainties related to stakeholder expectations and compliance with laws, which can be considered as business risks. However, it does not provide a comprehensive overview of the main business risks."
+    },
+    {
+      "document_id": 16,
+      "metadata": {
+        "source": "ITEM 1A - Risk Factors - pages(7, 19)",
+        "ticker": "AAPL",
+        "filing_type": "10-K"
+      },
+      "relevance_score": 0.5,
+      "reasoning": "The document mentions exposure to significant fines and changes to business practices, which are aspects of business risks, but it does not provide a comprehensive overview of the main business risks."
+    },
+    {
+      "document_id": 17,
+      "metadata": {
+        "filing_type": "10-K",
+        "ticker": "AAPL",
+        "source": "ITEM 3 - Legal Proceedings - pages(20, 20)"
+      },
+      "relevance_score": 0.5,
+      "reasoning": "The document discusses legal proceedings as a business risk, which is relevant to the broader topic of business risks, but it does not provide a comprehensive overview of all main business risks."
+    },
+    {
+      "document_id": 18,
+      "metadata": {
+        "filing_type": "10-K",
+        "ticker": "AAPL",
+        "source": "ITEM 1A - Risk Factors - pages(7, 19)"
+      },
+      "relevance_score": 0.5,
+      "reasoning": "The document discusses legal risks and their potential impact on a company's operations and reputation, which is a type of business risk. However, it does not provide a comprehensive overview of all main business risks."
+    },
+    {
+      "document_id": 19,
+      "metadata": {
+        "source": "ITEM 1A - Risk Factors - pages(7, 19)",
+        "ticker": "AAPL",
+        "filing_type": "10-K"
+      },
+      "relevance_score": 0.5,
+      "reasoning": "The document discusses litigation and its impact on a company's operations, which is a specific type of business risk. However, it does not provide a comprehensive overview of all main business risks."
+    },
+    {
+      "document_id": 20,
+      "metadata": {
+        "filing_type": "10-K",
+        "ticker": "AAPL",
+        "source": "ITEM 1A - Risk Factors - pages(7, 19)"
+      },
+      "relevance_score": 0.5,
+      "reasoning": "The document discusses various risks related to legal compliance, reputation, and market acceptance, which are aspects of business risks. However, it does not provide a comprehensive overview of all main business risks."
+    }
+  ],
+  "correctness": {
+    "correctness_score": 1.0,
+    "is_supported": true,
+    "missing_information": [],
+    "reasoning": "The answer accurately identifies and categorizes the main business risks as regulatory, financial, operational, legal and compliance, reputational, and market and competitive risks. Each category is well-supported by the provided documents, which detail the implications and examples of these risks. The references to specific documents reinforce the claims made in the answer, ensuring both correctness and completeness."
+  },
+  "plan": {
+    "original_question": "What are the main business risks?",
+    "sub_questions": [
+      "What are the financial risks mentioned in the SEC filings?",
+      "What operational risks are identified in the SEC filings?",
+      "Are there any regulatory risks discussed in the SEC filings?",
+      "What market risks are highlighted in the SEC filings?",
+      "What competitive risks are outlined in the SEC filings?",
+      "Are there any risks related to technology mentioned in the SEC filings?",
+      "What risks related to supply chain are noted in the SEC filings?",
+      "What risks associated with customer demand are identified in the SEC filings?",
+      "Are there any environmental risks discussed in the SEC filings?",
+      "What risks related to litigation or legal proceedings are mentioned in the SEC filings?"
+    ],
+    "num_sub_questions": 10
+  },
+  "retrieved_documents": 21,
+  "verified_documents": 21,
+  "relevant_documents": 20,
+  "metadata": {
+    "company_ticker": "AAPL",
+    "filing_type": "10-K",
+    "timestamp": "2025-12-10T11:11:43.472359"
+  },
+  "processing_summary": {
+    "sub_questions_generated": 10,
+    "retrieved_documents": 21,
+    "verified_documents": 21,
+    "relevant_documents": 20,
+    "correctness_score": 1.0,
+    "is_supported": true
+  }
+}
